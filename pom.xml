@@ -36,6 +36,32 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- JPA/Hibernate: Java класстары менен SQL таблицаларын байланыштырат -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- PostgreSQL JDBC айкөкчүсү (runtime: иштетирүү учурунда гана керек) -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Flyway: DB схемасын версия менен башкарат (таблицаларды ОЗУ түзөт) -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
+        <!-- Flyway 10+ PostgreSQL колдогону POS айкөкчүсүнө бөлүнгөн.
+             Бул китепкананы кошпосо Flyway PostgreSQL'ге коно албайт. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
         <!-- JUnit 5 + AssertJ + Mockito + Spring Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

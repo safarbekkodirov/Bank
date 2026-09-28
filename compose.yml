@@ -1,0 +1,50 @@
+# ============================================================
+#  Mini Bank — PostgreSQL контейнери
+#
+#  docker compose up -d      → PostgreSQL иштетиү (фондо)
+#  docker compose ps         → абалды көрүү
+#  docker compose logs -f    → логдорду көрүү
+#  docker compose down       → контейнерди өчүрүү, маалымат САКТЫЛАДЫ
+#  docker compose down -v    → ⚠️ ӨЧҮРҮҮ + БАРЫГЫН ӨЧҮРҮҮ (маалымат ЖОГОЛТ)
+# ============================================================
+
+services:
+
+  postgres:
+    # PostgreSQL 16 — туруктуу, кеңири колдонулган версия
+    image: postgres:16
+
+    container_name: minibank-postgres
+    restart: unless-stopped
+
+    # Маалыматтар .env файлынан окулат (Compose аны автоматтык издейт)
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Орусча/БАшка тамгалар үчүн
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+
+    ports:
+      # "Хост порту: контейнер порту" — сырткы 8080/3306 менен такатташпайт
+      - "${POSTGRES_PORT}:5432"
+
+    # ⚠️ МААНИЛҮҮ: маалыматтар дисктеги томго сакталат.
+    #    `docker compose down` кылганда да маалымат калат.
+    #    Жоколсо `down -v` менен гана өчөдү.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    # Даяр болгонго чейин "starting" абалында турат.
+    # Бул Docker Desktop/Compose'тун `depends_on: condition: service_healthy`
+    # механизми менен иштейт.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    driver: local

@@ -1,18 +1,48 @@
 # ==========================================================
-#  Spring Boot конфигурациясы
+#  Spring Boot конфигурациясы — PHASE 2 (Database)
 # ==========================================================
 
 spring:
+
   application:
     name: minibank
 
+  # Чыныгы маалыматтарды Git'ке киргизилбеген .env файлынан окуу.
+  # Spring Boot .env форматын (KEY=value) properties деп түшүнөт.
+  # "optional:" = файл жок болсо да колдонмо катасыз иштейт,
+  # бирок ${DB_PASSWORD} ошондо табылмайт.
+  config:
+    import: "optional:file:.env[.properties]"
+
+  # ---------------- PostgreSQL байланышы ----------------
+  # Пароль САРТТЫН ЖОК: баары ${...} аркылуу .env'тен келет.
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:minibank}
+    username: ${DB_USERNAME:minibank}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  # ---------------- Hibernate / JPA ----------------
+  jpa:
+    # validate = Hibernate таблицаларды ТҮЗБӨЙТ, бар экенин текшерет.
+    # Схеманы Flyway башкарат (төмөндө).
+    hibernate:
+      ddl-auto: validate
+    # False = Controller HTML барагына кайтарылганда базага улам
+    # суроо жүртпөсүн. Чыныгы сезимдүү өндүрүш стандарты.
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  # ---------------- Flyway ----------------
+  flyway:
+    enabled: true
+    # Migration файлдары ушул папкадан изделет
+    locations: classpath:db/migration
+    # Биз Flyway чыгарып жаткан колдонмолор
+    baseline-on-migrate: true
+
 server:
   port: 8080
-
-# PHASE 2де ушул жерге PostgreSQL + Flyway кошотами:
-#
-# spring:
-#   datasource:
-#     url: ${DB_URL}
-#     username: ${DB_USERNAME}
-#     password: ${DB_PASSWORD}
