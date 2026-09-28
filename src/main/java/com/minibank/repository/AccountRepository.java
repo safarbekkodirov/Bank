@@ -102,4 +102,61 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from Account a where a.user.id = :userId")
     Optional<Account> findByUserIdForUpdate(@Param("userId") Long userId);
+
+    /**
+     * 🔒 ЭСЕПТИ ИДСИ БОЮНЧА «КУЛОПКА» МЕНЕН АЛУУ (PESSIMISTIC WRITE).
+     *
+     * 🧠 БУЛ PHASE 6 (TRANSFER) ҮЧҮН КЕРЕК. Себеби transfer бир
+     *    иште ЭКИ эсеп ӨЗГӨРӨТ (source −, destination +). Демек экөөсүн
+     *    тең жазуу кулопкасынын астына алыш керек.
+     *
+     * 🧠 ЭМНЕ `findById` ЭМЕС, `@Query` КАЖАРЫ?
+     *     Spring Data «forUpdate» деген сөзү «Account.forUpdate»
+     *     деп окуйт -> «мындай касиети жок» деп ыйлап, өзү иштебей
+     *     калат (PHASE 5те ушул ката кеткен). Демек @Lock «FOR UPDATE»
+     *     кошоёт, @Query «КАЙСЫ ЖАЗУУ» деп айтат. БИРГЕ — толук суроо.
+     *
+     * 🛡️ КУЧТҮҮ ЖАГДАЙ: башка колдонуучунун эсебине кирип, аны
+     *     «жазып чыгаруу» (transaction кошкон) эмес — «окуу» үчүн
+     *     гана lock алабыз. Демек чыгаруучу чүйлүш кийин
+     *     transaction'ды кайра-кайра чыгарып, эсепти ТАЗА ТУТПАЙ,
+     *     бирок «кайтарып берүү» аракетин көрсө, биз аны
+     *     САНАБАЙБЫЗ. Биз санаган жана жазган — өз эсебибиз.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select a from Account a where a.id = :id")
+    Optional<Account> findByIdForUpdate(@Param("id") Long id);
+
+    /**
+     * 🆕 PHASE 6: колдонуучунун эсебинин ИЧКИ НОМУРУ (эсепсyz окуу).
+     *
+     * 🧠 ЭМНЕ БҮТ ЭСЕПТИ ЭМЕС, АНДА ТЕК ИД'НИ АЛЫШ КЕРЕК?
+     *     Себеби — ЭҮЧҮНЧҮ ОКУУ КАТАСЫ (чыныгы «lost update»):
+     *         Эгер биз эсепти АЧЫК (кулопкасыз) суроо менен
+     *         окууп, аны колдонуучунун «ассоциация кэшине»
+     *         (persistence context) САЛСАК — ал жерде баланс
+     *         ЭСКИ күйдө турат. Кийин `FOR UPDATE` кулопка менен
+     *         кайта окуганда, эсеп ОШО эски абалын колдонуп
+     *         кала берет. Натыйжа: биз 1000 окуп, 50 кеткен
+     *         дейт, эгер башка бирөө дагы 50 кеткен болсо —
+     *         ЖАЗЫП, КАЙРА 950 ЖАЗАБЫЗ. Акча ЖОГОЛУП КАЛАД.
+     *         (Биздин тест бул ктаны 20 желе менен «устап» чыкты:
+     *         20 жазуу бар, бирок баланс 100 га гана жылды.)
+     *
+     * 🧡 ЧЕЧИМ: кулопка АЛДАН биз эсептин ӨЗҮН ОКУБАЙБЫЗ —
+     *     ТЕК АНЫН ИДСИН алабыз. ID ЭЧ КАЧАН ӨЗГӨРБӨЙТ, ошондуктан
+     *     «эски» болуп калуу мүмкүн эмес. ID билгенден кийин,
+     *     эсепти ТАЗА кулопка менен (`findByIdForUpdate`) алып,
+     *     балансы АР ДАЙЫМ СВЕЖИЙ болот.
+     *
+     * 🧠 `@Query` «select a.id» — JPQL'деги «бөгүт» (projection):
+     *     эсептин объектиси ЖАРАТЫЛБАЙТ, Java'га узун сан (Long)
+     *     гана кетет. Демек эс а «эски» абал кэшке кирбейт.
+     */
+    @Query("select a.id from Account a where a.user.id = :userId")
+    Optional<Long> findIdByUserId(@Param("userId") Long userId);
+
+    /** 🆕 PHASE 6: эсеп номуру боюнча ИЧКИ НОМУРУ (эсепсyz окуу). */
+    @Query("select a.id from Account a where a.accountNumber = :accountNumber")
+    Optional<Long> findIdByAccountNumber(@Param("accountNumber") String accountNumber);
 }

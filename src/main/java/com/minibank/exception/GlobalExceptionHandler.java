@@ -220,6 +220,37 @@ public class GlobalExceptionHandler {
         return badRequest(ex.getMessage(), request);
     }
 
+    /**
+     * 409 CONFLICT — колдонуучу ӨЗ ЭСЕБИНЕ ӨЗҮН КОТУРМОКЧУ (А → А).
+     *
+     * 🧠 ЭМНЕ 409, ЭМЕС 400?
+     *     400 = «сен БУРУШ СҮРОМУ КЫЛДЫҢ» (маалыматын туура эмес).
+     *     409 = «сен БУРУШ СҮРОМУ КЫЛДЫҢ, бирок аны ИШКЕ КОЛДОНБАЙТ»:
+     *           номур чыныгы, сумма чыныгы — бирок «А → А» деген
+     *           амал БИЗДЕ ЖОК. Бул абалды оңдөп БОЛОТ (башка эсепке
+     *           котору), демек кайта аракет кылууга бөтөт.
+     *
+     * 🛡️ КАЙСЫ АСПЕКТТЕ МААЛЫМАТ УГУУ БОЛБОЙТ? — БАЙКОТ:
+     *     Биз «сен көрбөгөн эсепке өтүү аракет кылдың» деп
+     *     айтпайбыз. Чыныгы эсеп ТАПЫЛБАГАНДА — 404 (жалпы хабар,
+     *     чыныгы эсеп бар же жок экенин айтпайт). Болгондо гана
+     *     «сен өзүңдүн эсебиң» деп айтабыз — бул ЧЫНАГЫ колдонуучунун
+     *     ӨЗ маалыматы, ошондуктан кооптук эмес.
+     */
+    @ExceptionHandler(SelfTransferException.class)
+    public ResponseEntity<ApiError> handleSelfTransfer(
+            SelfTransferException ex, HttpServletRequest request) {
+
+        log.warn("Self-transfer rejected on {}: {}", request.getRequestURI(), ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiError.of(
+                        HttpStatus.CONFLICT.value(),
+                        HttpStatus.CONFLICT.getReasonPhrase(),
+                        ex.getMessage(),
+                        request.getRequestURI()));
+    }
+
     private ResponseEntity<ApiError> badRequest(String message, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiError.of(

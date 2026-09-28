@@ -11,9 +11,12 @@ import org.springframework.web.bind.annotation.RestController;
 import com.minibank.dto.account.AccountResponse;
 import com.minibank.dto.transaction.MoneyOperationRequest;
 import com.minibank.dto.transaction.MoneyOperationResponse;
+import com.minibank.dto.transaction.TransferRequest;
+import com.minibank.dto.transaction.TransferResponse;
 import com.minibank.security.SecurityUtils;
 import com.minibank.service.AccountService;
 import com.minibank.service.MoneyService;
+import com.minibank.service.TransferService;
 
 import jakarta.validation.Valid;
 
@@ -48,10 +51,14 @@ public class AccountController {
 
     private final AccountService accountService;
     private final MoneyService moneyService;
+    private final TransferService transferService;
 
-    public AccountController(AccountService accountService, MoneyService moneyService) {
+    public AccountController(AccountService accountService,
+                             MoneyService moneyService,
+                             TransferService transferService) {
         this.accountService = accountService;
         this.moneyService = moneyService;
+        this.transferService = transferService;
     }
 
     /**
@@ -131,5 +138,34 @@ public class AccountController {
         Long currentUserId = SecurityUtils.getCurrentUserId();
         return moneyService.withdraw(
                 currentUserId, request.amount(), request.description());
+    }
+
+    /**
+     * POST /api/accounts/me/transfer — менин эсебимден башка эсепке.
+     *
+     * 🧡 БУЛ ЖЕРДЕ «МЕН КИММИН?» ДЕГЕН СҮРООГо ЖООП БЕРИЛЕТ:
+     *     • КАЙНЕК (source) — ТОКЕНДЕН. Эч качан сүрөттөн ЭМЕС.
+     *       Чыгаруучу `?accountId=73` же `{"fromAccountId": 73}`
+     *       жазып, БАШКАЛАРДЫН АКЧАСЫН АЛЫП КЕТЕ алам деп
+     *       аракет кылышы мүмкүн. Биз аны КАБЫЛ АЛБАЙБЫЗ:
+     *       чүйлүш талаалары СИЛКИЛЕТ, эсеп токенден табылат.
+     *     • КЕЙИНКЕ (destination) — `toAccountNumber` менен. Бул
+     *       АЧЫК маалымат: «ушул эсепке котору» — бул чыныгы
+     *       которуунун мааниси. БУГУН чүйлүш кылышы МҮМКҮН
+     *       (эсептүн ээси өз акчасын каалайт).
+     *
+     * 🧡 @Valid — сумма 0/терс/4төн көп каттуу -> 400 (базага
+     *    тийгүн туруп). Дагы катмар — Service'те.
+     *
+     * 🧡 200 (201 ЭМЕС): жаңы ресурс ЖАРАЛБАГАН — акча көчтү.
+     *
+     * 🔴 409 — self-transfer («А → А») же акча жетишпейт.
+     * 🔴 404 — destination жок, же колдонуучунун өз эсеби жок.
+     * 🛡️ 401 — токенсиз.
+     */
+    @PostMapping("/me/transfer")
+    public TransferResponse transfer(@Valid @RequestBody TransferRequest request) {
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        return transferService.transfer(currentUserId, request);
     }
 }
