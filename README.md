@@ -19,15 +19,216 @@ Java Backend, Spring Boot, PostgreSQL, REST API, Authentication жана бан�
 | Flyway | (Spring Boot менен биге келед) |
 | JUnit 5 | (Spring Boot Test менен биге келед) |
 
-## Учурдагы абал: **PHASE 2 — Database Foundation**
+## Учурдагы абал: **PHASE 3A — User + Registration**
 
-Эми иштеп жатат: PostgreSQL 16 (Docker'да) + Flyway миграциялары + 3 таблица.
+Эми иштеп жатат: чыныгы REST API `POST /api/auth/register` — PostgreSQLге чыныгы
+жазуу салып, парольды BCrypt менен хэштеп.
 
-Азыр жок: Java Entity, Repository, Service, Controller, Authentication, бизнес-логика, Frontend.
+Азыр жок: JWT, Login, Account, Transaction, бизнес-логика, Frontend.
 
 ---
 
-# PHASE 2 — Database
+# PHASE 3A — User жана Registration
+
+## Бүт чөйрө (request кантип жүрөт)
+
+```
+POST /api/auth/register  {"fullName":"...","email":"...","password":"..."}
+        │
+        ▼
+┌──────────────────┐   @Valid: @NotBlank/@Email/@Size
+│  AuthController  │   (калган кириш текшерүүлөрү)
+└────────┬─────────┘
+         │  RegisterRequest (DTO) — Entity ЭМЕС
+         ▼
+┌──────────────────┐   @Transactional
+│   UserService    │   exists? -> encode -> save
+└────────┬─────────┘
+         │  User (Entity)
+         ▼
+┌──────────────────┐   Spring Data SQL жазат
+│  UserRepository  │   SELECT ... / INSERT ...
+└────────┬─────────┘
+         │
+         ▼
+   ┌───────────┐
+   │PostgreSQL │  users
+   └───────────┘
+         │
+         ▼
+   UserResponse (DTO) ← UserMapper, пароль ЖОК
+```
+
+## Файлдардын структурасы
+
+```
+src/main/java/com/minibank/
+├── BankApplication.java
+├── controller/AuthController.java      ← JSON → DTO → Service
+├── service/UserService.java             ← БИЗНЕС-ЛОГИКА
+├── repository/UserRepository.java       ← SQL (жазылган эмес, тууралуш)
+├── entity/
+│   ├── User.java                        ← users таблицасы
+│   ├── Role.java                        ← USER / ADMIN
+│   └── BaseEntity.java                  ← createdAt / updatedAt
+├── dto/
+│   ├── auth/RegisterRequest.java        ← КИРИШ (валидация + тазалоо)
+│   ├── user/UserResponse.java           ← ЧЫГАРУУ (пароль жок)
+│   └── common/ApiError.java             ← каталардын форматы
+├── mapper/UserMapper.java               ← User → UserResponse
+├── exception/
+│   ├── EmailAlreadyRegisteredException.java
+│   └── GlobalExceptionHandler.java      ← 400 / 409 / 500
+└── config/
+    ├── PasswordConfig.java              ← BCryptPasswordEncoder Bean
+    └── JpaAuditingConfig.java           ← @EnableJpaAuditing
+```
+
+## 🧠 Entity ≠ DTO (эң маанилүү эреже)
+
+| Класс | Кимге көрүнөт | Пароль барбы? |
+|---|---|---|
+| `User` (entity) | Маалымат базасына гана | 🔴 `passwordHash` бар |
+| `UserResponse` (DTO) | API аркылуу дүйнөгө | ✅ **Жок** |
+
+Эгерде биз `User` тим эле API'ге кайтарсак — бир күн эсепке `apiToken` кошулганда,
+ал **автоматтык** JSONга түшүп, тышын чыгмак. DTO = «көзөгө көрүнгөн талаалардын
+анык тизми».
+
+## 🧠 Эмне `@Enumerated(EnumType.STRING)`?
+
+```
+ORDINAL -> базада САН:     0, 1, 2
+STRING  -> базада ТЕКСТ:  'USER', 'ADMIN'
+```
+
+Эгерде `ORDINAL` колдонсо, кийин enum'га `MANAGER` кошкондо:
+
+```
+Азыр:  USER=0, ADMIN=1
+Кийин: USER=0, ADMIN=2        ← ADMIN 1 болуп ЖАШЫРЫЛДЫ
+Жыйынтык: базада "1" деп жазылган колдонмонулар ЭМИ MANAGER болуп калды
+```
+
+Ошондуктан **башынан** `STRING` — оңдөтүү кийин эмес, башта.
+
+## 🧠 Пароль: BCrypt кантип иштейт
+
+```
+Кирген:      Password123!
+Хэш:         $2a$10$viqJMj80CGQLMa/hY9gBp.1I95Fs/.tC3jG4WVwoN582clZVJlaRu
+             └┬┘ └┬┘ └──────────┬──────────────┘
+              │   │             └── 22 тамга: SHA-256 эмпирикалык туз
+              │   └── 10 = "күч" (2^10 = 1024 айлампа иштетилген)
+              └── BCrypt белгиси
+Жалпы узундук: 60 белги, бирок БИЗДИКИ 255 -> алгоритм өзгөрсө орун калабы
+```
+
+- **Бир багыттуу**: хэште «артка» бүрүү МҮМКҮН ЭМЕС. Демек DB ууруп, парольдүү
+  колдонуучунун **анык** маалыматын алышы МҮМКҮН ЭМЕС.
+- **Туз (соль)**: бир эле пароль эки жолу хэштелсе, хэш **башкаша** болот
+  (тест 4б менен текширилген). Болбосо, эки эле парольдүү колдонуучуну
+  сырткы чыгаруучулар таанып алышты.
+
+## 🧠 Три катмардын валидациясы
+
+| Катмар | Эмне текшерет | Ката | Мисал |
+|---|---|---|---|
+| **1. DTO `@Valid`** | Клиенттин жиберген нерсе туурабы | 400 | Бош ат, жаман email |
+| **2. Service** | Бизнес-эрежелер | 409 | Бул email мурун катталган |
+| **3. Database CHECK/UNIQUE** | Акыркы сыр | 409 | Java багып кетсе да DB кайтарат |
+
+> 2-катмар иштегенде эле 3-катмар көзөмөлдөнбейт. Чыныгы колдонмодо эки адам
+> тез жазып жатса, экөөнү тез өткөзүп жиберсе, **маалымат базасы** бизди
+> токтотот. Ошондуктан `DataIntegrityViolationException` катасы да 409 менен
+> кармалып турат.
+
+## 🧠 КИРИШ тазалоо (trim/lowercase) — кайда жана ЭМНЕ ҮЧҮН
+
+Биз чыныгы сыноо чыктык: `"  HTTP.Case@Example.COM "` жатканда сервер **400** берди.
+Себеби: `@Email` анотациясы асты-үстү боштукту **таныбайт**.
+
+**Чечим:** тазалоо DTO'нун **компакт конструкторунда** (`RegisterRequest`) жасалды:
+
+```java
+public RegisterRequest {
+    fullName = trim(...);                                   // "  Ali  " -> "Ali"
+    email    = trim(...).toLowerCase(Locale.ROOT);         // "  A@B.COM " -> "a@b.com"
+    // пароль ОЗГӨРҮЛБӨЙТ
+}
+```
+
+- Бул код **объект түзүлгөн учун** иштейт, ДЕМЕК `@Valid` текшерүүсүнө
+  тазаланган маалымат киредь.
+- Пароль **тазаланбайт**: `" my pass "` менен `"my pass"` — эки БАШКА пароль.
+  Тазаласак, колдонуучу өз тандаган паролду унутат.
+- `Locale.ROOT` — "Turkish-I" катасынан коргоо: турец тилинде
+  `toLowerCase("ALI")` -> `alı` болуп, базанын CHECK'и кайтарар эле.
+
+## Катталуу тесттери (21 тест)
+
+| Файл | Тесттер | Катмар |
+|---|---|---|
+| `BankApplicationTests` | 1 | Контекст көтөрүлөбү |
+| `UserServiceRegistrationTest` | 10 | Service + чыныгы PostgreSQL |
+| `AuthControllerRegistrationTest` | 10 | HTTP + чыныгы PostgreSQL |
+
+> 🧠 **Эмне чыныгы база, эмне mock эмес?**
+> Бул этаптын максаты — «Java Entity менен SQL таблицасы таптак келеби»
+> дегенди көрсөтүү. Репозиторийди mock кылсак, Entity'нин катасы
+> (тип, узундук, `@Enumerated`) **эч кимде болбой эле**. Ошондуктан
+> бардык тест чыныгы PostgreSQL менен иштейт.
+>
+> 🧡 Тесттер `@Transactional` — бүткөндөн кийин автоматтык **rollback**,
+> база таза калат, бир тест экинчисин бузбайт.
+
+## API чакыруусу
+
+```bash
+# Катталуу -> 201 Created
+curl -X POST http://localhost:8080/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"fullName":"Алиев Али","email":"Ali@Example.COM","password":"Password123!"}'
+
+# {"id":53,"fullName":"Алиев Али","email":"ali@example.com",
+#  "role":"USER","createdAt":"2026-09-28T11:33:07Z"}
+#                              ↑ автоматтык кичи тамга
+```
+
+| Ката | HTTP | Мисалы |
+|---|---|---|
+| Email мурун катталган | **409** | `"An account with email '...' is already registered"` |
+| Валидация | **400** | `fieldErrors: [{field, message}, ...]` |
+| Ички ката | **500** | `"An unexpected error occurred..."` (логго толук маалымат) |
+
+> 🔴 Ката жоопторунда **stack trace жок** — 10-тест бул текширет. Ички
+> детальдер (DB жолдору, класстар) логго гана жазылат.
+
+## Маалымат базасын көрүү
+
+```bash
+docker compose exec postgres psql -U minibank -d minibank -c \
+  "SELECT id, full_name, email, password_hash, role FROM users;"
+```
+
+```
+ id | full_name |      email      |                        password_hash                         | role
+----+-----------+-----------------+--------------------------------------------------------------+------
+ 53 | Алиев Али | ali@example.com | $2a$10$viqJMj80CGQLMa/hY9gBp.1I95Fs/.tC3jG4WVwoN582clZVJlaRu | USER
+```
+
+## Командалар
+
+```bash
+docker compose up -d      # PostgreSQL (база жок болсо)
+./mvnw spring-boot:run    # http://localhost:8080
+./mvnw test               # 21 тест
+./mvnw clean package
+```
+
+---
+
+# PHASE 2 — Database (Сүрөттөмө)
 
 ## PostgreSQL эмне үчүн керек?
 
@@ -202,7 +403,7 @@ src/main/resources/
 | 0 | Чөйрөнү текшерүү | ✅ |
 | 1 | Project Skeleton | ✅ |
 | 2 | PostgreSQL + Flyway + таблицалар | ✅ |
-| 3 | Registration / Login | ⬜ |
+| 3 | Registration (3A) ✅ / Login + JWT (3B) | ⬜ |
 | 4 | Accounts | ⬜ |
 | 5 | Deposit / Withdraw / Transfer | ⬜ |
 | 6 | Transaction History | ⬜ |

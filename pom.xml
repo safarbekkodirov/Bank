@@ -62,6 +62,24 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
+        <!-- Валидация: @NotBlank / @Email / @Size (Jakarta Bean Validation).
+             Spring Boot 2.3+дан бери бул АЙЛАМПА web ичине киргизбейт,
+             аны атайын кошуш керек. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- BCrypt үчүн МИНИМАЛДУУ китепкана.
+             Бул атайын "security-crypto": Spring Security'нин crypto бөлүмү гана.
+             Ал BCryptPasswordEncoder КЛАССИН БЕРЕТ, бирок HTTP коопсуздук
+             чыпкаларын (SecurityConfig, filter chain) күйгүзбөй.
+             Ошондуктан 3A этапында колдонмокум ачык турат, токтотулбайт. -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+
         <!-- JUnit 5 + AssertJ + Mockito + Spring Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
