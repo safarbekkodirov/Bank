@@ -75,6 +75,43 @@ public class Account extends BaseEntity {
         this.balance = balance;
     }
 
+    /**
+     * 💰 АКЧА САЛУУ (deposit): жаңы баланс = көпү + amount.
+     *
+     * 🧡 ЭМНЕ БУЛ МЕТОД, setBalance() ЭМЕС?
+     *     Себеби: «эсеп кантип өзгөрөт» — БИЗНЕС ЭРЕЖЕ. Бул жашыруу
+     *     керек: чоң код жыйыгында бир кимдир `account.setBalance(...)`
+     *     деп, анын балдарын кечирип жазып коюшун көрсөк, акча
+     *     «оңбос кол менен» өзгөрө берет. Биз эсептөөнү ЭСЕПТЕ
+     *     гана иштетебиз, чоңкошкон учурда кийин «эмне үчүн?»
+     *     деп издегенде, бул жердеги 10 сап жооп берет.
+     *
+     * @param amount кошулган сумма. Текшерүүлөр Service катматында
+     *              (InvalidAmountException) — бул жерде КАЙЧЫК
+     *              инвариант: эгер чыныгыдан NullPointer келсе,
+     *              катанын түрү өзгөрүшүбөйт, жардам калбайт.
+     * @return жаңы баланс (түз дароо эмес, setScale(4) кылынган)
+     */
+    public BigDecimal credit(BigDecimal amount) {
+        this.balance = this.balance.add(amount).setScale(BALANCE_SCALE);
+        return this.balance;
+    }
+
+    /**
+     * 💸 АКЧА ЧЫГАРУУ (withdraw): жаңы баланс = көпү − amount.
+     *
+     * 🔴 ТЕРС БОЛУШТУГУН БУЛ КЛАСС ЭЛЕ ТЕКШЕРБЕЙТ.
+     *     Себеби: «калган акча жетиштиби?» — БИЗНЕС-ЭРЕЖЕ, ошондуктан
+     *     ал Service (MoneyService) катматында, InsufficientFundsException
+     *     менен текшерилет. Бул жерде биз арифметика гана кылабыз.
+     *     Эң акыркы коргоо — маалымат базасындагы
+     *     CHECK (balance >= 0) (V1__init.sql).
+     */
+    public BigDecimal debit(BigDecimal amount) {
+        this.balance = this.balance.subtract(amount).setScale(BALANCE_SCALE);
+        return this.balance;
+    }
+
     public Long getId() {
         return id;
     }

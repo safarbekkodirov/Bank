@@ -170,6 +170,66 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 409 CONFLICT — колдонуучунун эсебине акча ЖЕТПЕЙТ.
+     *
+     * 🧠 БУЛ КАТА «СЕРВЕР БУЗУЛДУ» ЭМЕС, «сен өтө көп сураптың»
+     *     ДЕГЕН. Ошондуктан 500 ЭМЕС, 409 (Conflict).
+     *
+     * 🧡 Эмне 400 ЭМЕС? 400 = «сен БУРУШ СУРОМУ КЫЛДЫҢ»
+     *     (терс сан, 4төн көп каттуу). 409 = «СУРОМУҢ ТУУРА,
+     *     бирок учунчуран тап тура» — эсепте жетишпейт.
+     *     Бул экиге БАШКАЧА оңдөлүш: 400'дө сумманы, 409'да
+     *     «башка сумма» жазып кайра суруу керек.
+     */
+    @ExceptionHandler(InsufficientFundsException.class)
+    public ResponseEntity<ApiError> handleInsufficientFunds(
+            InsufficientFundsException ex, HttpServletRequest request) {
+
+        // Логго — ким, канча сурады. Клиентке — «Insufficient funds».
+        log.warn("Withdrawal rejected on {}: {}", request.getRequestURI(), ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiError.of(
+                        HttpStatus.CONFLICT.value(),
+                        HttpStatus.CONFLICT.getReasonPhrase(),
+                        ex.getMessage(),
+                        request.getRequestURI()));
+    }
+
+    /**
+     * 400 BAD REQUEST — сумма мыйындык эмес (0, терс, 4төн көп каттуу).
+     *
+     * 🧡 БУЛ КАТАДА 409 ЭМЕС. Себеби: 409 = «маалымат КОНФЛИКТ»
+     *     (сервердеги менен ойлонбай калмак). Бул жагым:
+     *     «сен 4 каттуу кыл» деп АЧЫК айтабыз. Биз аны
+     *     ТЕГЕРЕКТЕБЕЙБИЗ — чыныгы акчаны «тегеректеп» жазуу
+     *     колдонуучунун эсебин ЧАЛЫП, эсептөө 1 тыйын чайралган.
+     */
+    @ExceptionHandler(InvalidAmountException.class)
+    public ResponseEntity<ApiError> handleInvalidAmount(
+            InvalidAmountException ex, HttpServletRequest request) {
+
+        return badRequest(ex.getMessage(), request);
+    }
+
+    /** 400 BAD REQUEST — комментарий өлчөмдөн чыкты. */
+    @ExceptionHandler(InvalidDescriptionException.class)
+    public ResponseEntity<ApiError> handleInvalidDescription(
+            InvalidDescriptionException ex, HttpServletRequest request) {
+
+        return badRequest(ex.getMessage(), request);
+    }
+
+    private ResponseEntity<ApiError> badRequest(String message, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiError.of(
+                        HttpStatus.BAD_REQUEST.value(),
+                        HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                        message,
+                        request.getRequestURI()));
+    }
+
+    /**
      * 409 CONFLICT — маалымат базасы "жок" деди.
      *
      * 🧠 МИНИМУМ: эгер экөнү тез жазып жүрсө, биздин existsByEmail() текшерүүсүн
