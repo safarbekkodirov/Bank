@@ -1,0 +1,4 @@
+CREATE SEQUENCE account_number_seq
+    START WITH 1
+    INCREMENT BY 1
+    OWNED BY NONE;

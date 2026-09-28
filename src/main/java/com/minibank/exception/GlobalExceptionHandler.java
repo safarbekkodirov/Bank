@@ -13,9 +13,12 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.minibank.dto.common.ApiError;
 import com.minibank.dto.common.ApiError.FieldViolation;
+import com.minibank.exception.AccountAlreadyExistsException;
+import com.minibank.exception.AccountNotFoundException;
 import com.minibank.exception.InvalidCredentialsException;
 import com.minibank.exception.UnauthorizedException;
 import com.minibank.exception.UserNotFoundException;
@@ -82,16 +85,69 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 404 NOT FOUND — изделген нерсе жок.
+     * 404 NOT FOUND — БАР БОЛГОН ЭНДПОИНТ ЖОК.
+     *
+     * 🧠 Бул катанын чыныгы себеби:
+     *   Клиент `/api/accounts/7` деп сурап жатат. Мындай эндпоинт
+     *   БИЗДЕ ЖОК (биз атайын `{id}` жазбайбыз — коопсуздук үчүн).
+     *   Токен туура болгондуктан коопсуздук чыпкасы ӨТҮП, кийин
+     *   Spring «мындай Controller методу жок» деп ыйлайт.
+     *
+     * 🛡️ Эмне үчүн бул 404, эмес 500?
+     *   Бул КЛИЕНТтин катасы («сен ушул баракты таппадың»), биздин
+     *   ЭМЕС. 500 деп берсек, биз «сервер бузилды» деп жалган айтабыз,
+     *   ошондо өз ичин мониторингде күчтүү шуудан пайда болот.
+     *   Демек: 404 = "сен тууруш кылмадың", 500 = "БИЗ бузулдук".
      */
-    @ExceptionHandler(UserNotFoundException.class)
-    public ResponseEntity<ApiError> handleNotFound(
-            UserNotFoundException ex, HttpServletRequest request) {
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleNoResourceFound(
+            NoResourceFoundException ex, HttpServletRequest request) {
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ApiError.of(
                         HttpStatus.NOT_FOUND.value(),
                         HttpStatus.NOT_FOUND.getReasonPhrase(),
+                        "No endpoint " + ex.getResourcePath() + " on this API",
+                        request.getRequestURI()));
+    }
+
+    /**
+     * 404 NOT FOUND — изделген нерсе жок.
+     */
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ApiError> handleUserNotFound(
+            UserNotFoundException ex, HttpServletRequest request) {
+        return notFound(ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(AccountNotFoundException.class)
+    public ResponseEntity<ApiError> handleAccountNotFound(
+            AccountNotFoundException ex, HttpServletRequest request) {
+        return notFound(ex.getMessage(), request);
+    }
+
+    private ResponseEntity<ApiError> notFound(String message, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiError.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        HttpStatus.NOT_FOUND.getReasonPhrase(),
+                        message,
+                        request.getRequestURI()));
+    }
+
+    /**
+     * 409 CONFLICT — эсеп мурунтан бар.
+     */
+    @ExceptionHandler(AccountAlreadyExistsException.class)
+    public ResponseEntity<ApiError> handleAccountAlreadyExists(
+            AccountAlreadyExistsException ex, HttpServletRequest request) {
+
+        log.warn("Account creation rejected on {}", request.getRequestURI());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiError.of(
+                        HttpStatus.CONFLICT.value(),
+                        HttpStatus.CONFLICT.getReasonPhrase(),
                         ex.getMessage(),
                         request.getRequestURI()));
     }

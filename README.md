@@ -19,12 +19,131 @@ Java Backend, Spring Boot, PostgreSQL, REST API, Authentication жана бан�
 | Flyway | (Spring Boot менен биге келед) |
 | JUnit 5 | (Spring Boot Test менен биге келед) |
 
-## Учурдагы абал: **PHASE 3B — Login + JWT**
+## Учурдагы абал: **PHASE 4 — Bank Account Domain**
 
-Эми иштеп жатат: чыныгы REST коопсуздугу. Логин → JWT токен → токен менен
-корголгон эндпоинт `/api/users/me`.
+Эми иштеп жатат: чыныгы банк эсеби. Токен менен эсеп ачабыз, өз эсебибизди
+көрөбүз. Сырткы колдонуучу өз эсебин гана көрөт.
 
-Азыр жок: Account, Transaction, акча операциялары, Admin, Frontend.
+Азыр жок: Deposit, Withdraw, Transfer, Transaction, Admin, Frontend.
+
+---
+
+# PHASE 4 — Bank Account Domain
+
+## 3. Архитектура: Account кандай User менен байланышканы
+
+```
+┌──────────────┐         ┌────────────────────┐
+│    users     │ 1     * │     accounts       │
+├──────────────┤◄───────│────────────────────│
+│ id (PK)      │         │ id (PK)            │
+│ email        │         │ user_id (FK, NOT   │
+│ password_hash│         │        NULL)        │
+│ role         │         │ account_number     │
+└──────────────┘         │  (UNIQUE)          │
+                         │ currency (RUB)     │
+                         │ balance NUMERIC    │
+                         │  (19,4) >= 0       │
+                         │ created/updated_at │
+                         └─────────┬──────────┘
+                                   │ 1
+                                   │ *
+                         ┌─────────▼──────────┐
+                         │   transactions     │  (Phase 5)
+                         └────────────────────┘
+```
+
+**Байланыш: `@ManyToOne`** — эсептин бир ээси бар, ээсинин көп эсеби болушу мүмкүн.
+(Азыр бизнес-эреже «бир эсеп» деп чектеди — маалымат базасында `UNIQUE(user_id)`.)
+
+## 🧠 `@ManyToOne(fetch = LAZY)` эмне үчүн?
+
+Алтын эсеп тизимдегенде, анын колдонуучусу **керилбейт**. `LAZY` = «чыныгы керек
+болгондо гана базадан суроо». `EAGER` болгонда — 100 эсеп = 100 колдонуучу суроосу
+(N+1 маселеси, кийинки этапта).
+
+## 🛡️ «КОЗГӨ ЧЫГАРБАЙТЫЗ» — эндпоинт дизайны
+
+Биз атайын **мындай эндпоинттер ЖАЗБАЙТ**:
+```
+GET /api/accounts/{id}        ❌
+GET /api/accounts?userId=53   ❌
+GET /api/accounts/me          ✅ МЫНА БУ
+```
+
+**Себеби (IDOR — Insecure Direct Object Reference):** эгер `{id}` болсо, колдонуучу
+`1, 2, 3...` деп маалдап, **башкалардын эсебин** көрө алар эле. Бизге кыз: чын
+эсептер ЖОК болсо, эле «сен 1-айлампага кирдиң, бул 2-адамдын акчасы» деп
+чыгарыбыз. «/me» = «сен өзүңдүн гана эсебиңди көрөсүң». ID сүрөттөн **эмес**,
+токенден келинет (тест 9 буруну текшерет).
+
+## 4. Database: эмне өзгөртүлдү
+
+| Миграция | Эмне кылды | Себеби |
+|---|---|---|
+| **V2** | `UNIQUE (user_id)` + `DROP INDEX ix_accounts_user_id` | «Бир колдонуучуга бир эсеп» + параллелдүүлүк |
+| **V3** | `CREATE SEQUENCE account_number_seq` | Эсеп номурун коопсуз түзүү |
+| **V4** | `currency: CHAR(3) → VARCHAR(3)` | Hibernate validate келишсиздиги |
+
+### 🛡️ V2 — Эмне үчүн UNIQUE(user_id) Java текшерүүсүнөн КАЧАТ?
+
+Java'да `existsByUserId()` бар, бирок ал **эртегин көккүлдөнүн тоңбайт**:
+```
+Суроо #1: "эсеп барбы?" -> ЖОК
+         ↓ (экөө бир убакта келди)
+Суроо #2: "эсеп барбы?" -> ЖОК   ← экөө тең!
+         ↓
+Экөөнү INSERT -> ЭКИ ЭСЕП ТҮЗҮЛДӨ  💥
+```
+Бул **TOCTOU** («текшердиң, андан колдондуң») темиги. Демек эрежени
+**маалымат базасында** түзөм — ал эч качан бузулбайт (эки сервер, эки адам).
+
+🧡 **Индекс көккүлдөнү:** мурунку `ix_accounts_user_id` (карапайым) **алып
+ташталды**. Себеби: UNIQUE индекс **ичинен да** издөө үчүн иштейт — эки индекс
+бир иш кылып, экинчиси бош оруун ээлеп жүрөт.
+
+### 🔢 V3 — эсеп номуру: эсептөгүч эмес, рандом эмес
+
+Формат: `40817810` (банк коду, 8) + эсептөгүч (10) = **18 белги**.
+
+| Өлчөм | Натыйжа |
+|---|---|
+| ❌ Жөнөкөй эсептөгүч (AtomicLong) | Сервер өчсө → номур **кайталанат** |
+| ❌ Рандом 18 белги | 3.5 триллион вариант, бирок кубултуу керек |
+| ✅ **DB эсептөгүчү** | Сервер өчсө да жашат; 2 сервер = 1 эсептөгүч; **эч качан дубль бербейт** |
+
+Ошондуктан бизге **retry керек эмес** — эсептөгүч эч качан кайталош болбогон.
+
+### 🛑 V4 — Hibernate validate тапкан чыныгы ката
+
+```
+found [bpchar (CHAR)], but expecting [varchar(3) (VARCHAR)]
+```
+
+V1'де `CHAR(3)` жазган элем, Java `String` болсо Hibernate `VARCHAR` күткөн.
+`ddl-auto=validate` **иштеп, колдонмону токтотту** — «Java менен SQL бири-бирин
+текшерет» деген чечимимиз чыныгыдан иштеди.
+
+**Эмне VARCHAR кылыш керек, эмес Java'ны CHAR'га өтгөнүбүз?**
+1. БАШКА БААРЫ колонка VARCHAR — бир таблицада эки түрлүү катуу көрүнөт
+2. PostgreSQL'де `CHAR(n)` — **боштук менен толтурат** (blank padding):
+   `'RU'` → DB'де `'RU '`. Кийин «эмне үчүн эсептелди?» таңсыздыктары
+3. VARCHAR кылганда Java тарапта эч нерсе өзгөрбөй
+
+## 5. API
+
+| Endpoint | Код | Маалымат |
+|---|---|---|
+| `POST /api/accounts` | **201** | Жаңы эсеп (`balance: 0.0000`, `currency: RUB`) |
+| `GET /api/accounts/me` | **200** | Өз эсебим |
+| | **404** | Эсеп жок |
+| | **409** | Эсеп мурунтан бар |
+| | **401** | Токенсиз |
+
+Request body **талап кылынбайт** — эсептин маалыматы колдонуучуга эмес,
+**токенге** жараша түзүлөт.
+
+
 
 ---
 
@@ -397,13 +516,98 @@ curl -X POST http://localhost:8080/api/auth/login \
 | Бош пароль | `HTTP 401` `"Invalid email or password"` |
 | Бейтарап email | `HTTP 401` `"Invalid email or password"` ← **бирдей** |
 
-## Командалар
+## 6. Коопсуздук: PHASE 3B тартиби БУЗУЛБАЙТ
+
+`SecurityConfig` **бир сапка да өзгөрбөдү**. Себеби: эндпоинттер
+`.anyRequest().authenticated()` астында — жаңы эндпоинт кошкон сайын
+**ар дайым корголгон** болот. «Коопсуздук ээси» = чыпка.
+
+```
+POST /api/accounts    → JwtAuthenticationFilter → SecurityContext → 201
+GET  /api/accounts/me → JwtAuthenticationFilter → SecurityContext → 200
+   токенсиз          → чыпка таанымады → 401
+```
+
+| Сыноо | Натыйжа |
+|---|---|
+| Колдонуучу A өз эсебин көрөт | ✅ 200 |
+| Колдонуучу B **A'нын эсебин** көрө албайт | ✅ (тест 8) |
+| `/api/accounts/{id}` — эндпоинт **жок** | ✅ 404 (тест 9) |
+| `?userId=` параметри **иштемийт** | ✅ (тест 9) |
+| Токендиги колдонуучу өчкөн → 401 | ✅ (тест 10) |
+
+## 7. Тесттер: **64/64 өттү**
+
+| Файл | Тесттер |
+|---|---|
+| `AccountServiceTest` | **14** 🆕 |
+| `AccountApiSecurityTest` | **10** 🆕 |
+| `AuthLoginJwtTest` | 19 (3B'ден) |
+| `UserServiceRegistrationTest` | 10 (3A'дан) |
+| `AuthControllerRegistrationTest` | 10 (3A'дан) |
+| `BankApplicationTests` | 1 |
+| **Жыйынтык** | **64 passed, 0 failed** |
+
+## 8. Чыныгы curl сыноолору
 
 ```bash
-docker compose up -d      # PostgreSQL
-./mvnw spring-boot:run    # http://localhost:8080
-./mvnw test               # 40 тест
-./mvnw clean package
+# 1) Катталуу
+curl -X POST http://localhost:8080/api/auth/register -H 'Content-Type: application/json' \
+  -d '{"fullName":"Байрамов Бай","email":"BAYR@Example.com","password":"Password123!"}'
+
+# 2) Логин
+TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"bayr@example.com","password":"Password123!"}' \
+  | python3 -c "import json,sys;print(json.load(sys.stdin)['accessToken'])")
+
+# 3) Эсеп ачуу -> 201
+curl -X POST http://localhost:8080/api/accounts -H "Authorization: Bearer $TOKEN"
+
+# 4) Өз эсебим -> 200
+curl http://localhost:8080/api/accounts/me -H "Authorization: Bearer $TOKEN"
+```
+
+Жооп:
+
+```json
+{"id":73,"accountNumber":"408178100000000067","currency":"RUB",
+ "balance":0.0000,"createdAt":"2026-09-28T12:37:30.392860Z"}
+```
+
+| Сыноо | Натыйжа |
+|---|---|
+| `POST /api/accounts` (токен менен) | **201** |
+| `GET /api/accounts/me` (токен менен) | **200** |
+| Экинчи эсеп ачуу | **409** `already has a bank account` |
+| `/me` токенсиз | **401** |
+| `POST /accounts` токенсиз | **401** |
+| `/accounts/73` (эндпоинт жок) | **404** `No endpoint` |
+| Бузулган токен | **401** |
+| Эки колдонуучу → эки ар башка эсеп | `...067` жана `...068` |
+| `?userId=405` (башканын id) | **элек көзгөн эсебин** кайтарат |
+
+## 9. Build
+
+```
+[INFO] Tests run: 64, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  12.187 s
+```
+
+```
+Tomcat started on port 8080 (http) with context path '/'
+Schema "public" is up to date. No migration necessary.
+```
+
+Flyway журналы:
+
+```
+ version |       description       | success
+---------+-------------------------+---------
+ 1       | init                    | t
+ 2       | account one per user    | t
+ 3       | account number sequence | t
+ 4       | currency to varchar     | t
 ```
 
 ---
@@ -585,7 +789,7 @@ src/main/resources/
 | 2 | PostgreSQL + Flyway + таблицалар | ✅ |
 | 3A | Registration (User, BCrypt, Entity) | ✅ |
 | 3B | Login + JWT + Security | ✅ |
-| 4 | Accounts | ⬜ |
+| 4 | Accounts (эсеп ачуу, 18 белгилик номер) | ✅ |
 | 5 | Deposit / Withdraw / Transfer | ⬜ |
 | 6 | Transaction History | ⬜ |
 | 7 | Admin | ⬜ |
