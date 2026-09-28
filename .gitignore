@@ -1,14 +1,17 @@
 # ===== Maven =====
 target/
-!.mvn/wrapper/maven-wrapper.jar
 .mvn/timing.properties
 
 # ===== Java =====
 *.class
-*.jar
-*.war
 *.log
 hs_err_pid*
+
+# ===== Файлдар (jar ичинен тышкары) =====
+*.jar
+# ... бирок Maven Wrapper jar МАЖБУРРИЙТ, ошондуктан кайра коюу:
+!.mvn/wrapper/maven-wrapper.jar
+*.war
 
 # ===== IDE: IntelliJ IDEA =====
 .idea/
