@@ -19,16 +19,174 @@ Java Backend, Spring Boot, PostgreSQL, REST API, Authentication жана бан�
 | Flyway | (Spring Boot менен биге келед) |
 | JUnit 5 | (Spring Boot Test менен биге келед) |
 
-## Учурдагы абал: **PHASE 3A — User + Registration**
+## Учурдагы абал: **PHASE 3B — Login + JWT**
 
-Эми иштеп жатат: чыныгы REST API `POST /api/auth/register` — PostgreSQLге чыныгы
-жазуу салып, парольды BCrypt менен хэштеп.
+Эми иштеп жатат: чыныгы REST коопсуздугу. Логин → JWT токен → токен менен
+корголгон эндпоинт `/api/users/me`.
 
-Азыр жок: JWT, Login, Account, Transaction, бизнес-логика, Frontend.
+Азыр жок: Account, Transaction, акча операциялары, Admin, Frontend.
+
+---
+
+# PHASE 3B — Login + JWT
+
+## Архитектура: сүрөт кантип «таанылат»
+
+```
+        Authorization: Bearer <токен>
+                    │
+                    ▼
+┌────────────────────────────────┐
+│  JwtAuthenticationFilter       │  ← СҮРӨТ Controller'га ЖЕТПЕЙ ТУРАТ
+│  1. "Bearer" header барбы?     │  Жок -> өткөрөбүз (ачык жер иштесин)
+│  2. Кыр тамгасы туурабы?       │  Жок -> өткөрөбүз
+│  3. exp өткөбү?                │  Өткөн -> өткөрөбүз
+│  4. sub -> id -> маалымат базасы│  Жок -> өткөрөбүз
+│  5. Роль -> ROLE_USER          │
+│  6. SecurityContextке коёт     │
+└───────────────┬────────────────┘
+                ▼
+┌────────────────────────────────┐
+│  SecurityConfig                │
+│  GET /api/users/me             │  Токенсиз -> 401 JSON
+│  authenticated                 │  Токен менен -> Controller
+└───────────────┬────────────────┘
+                ▼
+┌────────────────────────────────┐
+│  UserController.getCurrentUser │  SecurityUtils.getCurrentUserId()
+│  → UserService → маалымат базасы│  (ID URL'ден ЭМЕС, токенден)
+└────────────────────────────────┘
+```
+
+## 🧠 JWT = «кол китепче»
+
+```
+eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiI1MyIs....EKHYs1N0ay1QV1-aOZc0_Wv_Ng4OSQ
+└──── баш ────┘ └──── борбор ─────┘ └────── кол тамга ──────┘
+  алгоритм        МААЛЫМАТ (текст)      HMAC, сырсыз ТЕКШЕРИЛБЕЙТ
+```
+
+Чыныгы токенибиздин **борбор** бөлүгү:
+
+```json
+{
+  "sub": "53",                      ← колдонуучунун id
+  "role": "USER",                   ← колдонуучунун роли
+  "iss": "minibank",                ← ким берди
+  "iat": 1790597264,                ← качан түзүлдү
+  "exp": 1790598164                 ← 900 секунддан кийин өлөт
+}
+```
+
+> **Жогоруда пароль ЖОК, пароль хэши ЖОК, email ЖОК.** (Тест 21)
+
+## 🛡️ User enumeration'дан коргоо
+
+| Ката | Биздин жообубуз |
+|---|---|
+| Пароль туура эмес | `"Invalid email or password"` |
+| Бундай email жок | `"Invalid email or password"` ← **БИРДЕЙ** |
+
+**🛡️ Убакыт аркылуу коргоо:** чыныгы BCrypt ~50-100 мс иштейт. Эгер email жок болсо
+салыштыруу өткөрүлбөй, тез жооп берер эле. Биз ошондо **чыныгы эмес** хэш менен
+салыштырууну жасап, убакытты бирдей кылабыз — чыгаруучу убакытты өлчөп эле
+эсеп жогун аныктап албасы.
+
+## 🧠 CSRF эмне үчүн өчүрүлдү?
+
+Биз **cookie ЭМЕС**, `Authorization: Bearer` header колдонобуз. Браузер header'ды
+**автоматтык кошпойт** — ошондуктан CSRF'ге мүмкүнчүлүк жок.
+
+> ⚠️ Эгер кийин сессияга (cookie) өтсөк — CSRF кайра **күйгүзүшү** керек.
+
+## Логин баскыч-баскыч
+
+```
+(1) email = request.email()                // LoginRequest'те тазаланган
+(2) user = findByEmail(email)              // маалымат базасы
+(3) жок -> чын эмес хэш салыштыруу + 401   // 🛡️ timing коргоосу
+(4) matches(password, hash) -> жалган -> 401
+(5) token = jwtService.generateToken(user)
+(6) AuthResponse(token, "Bearer", 900, userResponse)
+```
 
 ---
 
 # PHASE 3A — User жана Registration
+
+## Файлдардын структурасы (3B кошулгасы менен)
+
+```
+src/main/java/com/minibank/
+├── BankApplication.java
+│   └── exclude UserDetailsServiceAutoConfiguration ← демкилгиз колдонуучуну өчүрүү
+├── controller/
+│   ├── AuthController.java        ← /register + /login
+│   └── UserController.java        ← /api/users/me  🆕
+├── service/
+│   ├── UserService.java
+│   └── AuthService.java           ← 🆕 логин логикасы
+├── repository/UserRepository.java
+├── entity/  User.java, Role.java, BaseEntity.java
+├── dto/
+│   ├── auth/  RegisterRequest, LoginRequest 🆕, AuthResponse 🆕
+│   ├── user/  UserResponse
+│   └── common/  ApiError
+├── mapper/UserMapper.java
+├── exception/  🆕 InvalidCredentials, Unauthorized, UserNotFound
+├── security/                      ← 🆕 БАРЫГЫ ЖАҢЫ
+│   ├── JwtProperties.java         ← jwt.secret (сырсыз), jwt.expiration
+│   ├── JwtService.java            ← токен жасоо + текшерүү
+│   ├── JwtAuthenticationFilter.java  ← ар бир сүрөткө
+│   ├── AuthenticatedUser.java     ← id, email, role
+│   ├── SecurityUtils.java         ← «мен киммин?»
+│   ├── RestAuthenticationEntryPoint.java ← 401 JSON
+│   └── RestAccessDeniedHandler.java     ← 403 JSON
+└── config/
+    ├── SecurityConfig.java        ← 🆕 чыпка тартиби, ким кире алат
+    ├── PasswordConfig.java
+    └── JpaAuditingConfig.java
+```
+
+## Токен мөөрүтү: 15 минут
+
+`JWT_ACCESS_TOKEN_EXPIRATION=15m` → `expiresIn: 900` секунд.
+
+**Эмне 15 мүн?**
+- Узак = токен уурганда, уурганы өтө узак иштейт
+- Кыска = колдонуучу тез-тез логин кылышы керек
+
+Чын чечим — **refresh token** (кийинки этап): «15 мүн бүттү, бирок колдонуучу
+кайра колдоно алат». Азыр жөн гана access token — бул окуу долбоору үчүн туура.
+
+## 🔐 Spring'дин демкилгиз колдонуучусу ӨЧҮРҮЛДҮ
+
+`spring-boot-starter-security` коюлганда, эгер өзүбүздүн `UserDetailsService`
+берилбесе, Spring **өзү** колдонуучу жасайт:
+
+```
+Using generated security password: 4e5b21ce-33b6-4516-acc1-...
+колдонуучу: user / пароль: ошол рандом номур
+```
+
+Бизде бул керек эмес (колдонуучулар маалымат базасында), ошондуктан
+`BankApplication` ичинен `UserDetailsServiceAutoConfiguration` **exclude** кылдык.
+
+> 🧠 Функционалдуу эмес эле (formLogin/httpBasic өчүрүлгөн), бирок «чыныгы эмес
+> колдонуучу» деген ой кийин көңүл бүлгөн болмок.
+
+## Токенге эмнени САЛБАЙБИЗ?
+
+| Салуу | Жооп | Себеби |
+|---|---|---|
+| `password` | ❌ | Сыр — токен уургаса, пароль да кетет |
+| `passwordHash` | ❌ | Паролду тартууга мүмкүн болмок деп ойлошчулар бар |
+| `email` | ❌ | Зар болсо жараша, керек эмес |
+| `sub` (id) | ✅ | «Мен киммин?» — бул керек |
+| `role` | ✅ | Укуктарды чыпка берет |
+| `exp` / `iat` / `iss` | ✅ | Мөөрүт жана чыгаруучу |
+
+---
 
 ## Бүт чөйрө (request кантип жүрөт)
 
@@ -165,64 +323,86 @@ public RegisterRequest {
 - `Locale.ROOT` — "Turkish-I" катасынан коргоо: турец тилинде
   `toLowerCase("ALI")` -> `alı` болуп, базанын CHECK'и кайтарар эле.
 
-## Катталуу тесттери (21 тест)
+## Тесттер: 40 тест (бардыгы өттү)
 
-| Файл | Тесттер | Катмар |
+| Файл | Тесттер | Камтуусу |
 |---|---|---|
-| `BankApplicationTests` | 1 | Контекст көтөрүлөбү |
-| `UserServiceRegistrationTest` | 10 | Service + чыныгы PostgreSQL |
-| `AuthControllerRegistrationTest` | 10 | HTTP + чыныгы PostgreSQL |
+| `BankApplicationTests` | 1 | Контекст + Spring Security |
+| `UserServiceRegistrationTest` | 10 | PHASE 3A'дан |
+| `AuthControllerRegistrationTest` | 10 | PHASE 3A'дан |
+| `AuthLoginJwtTest` | **19** | 🆕 логин + JWT + коопсуздук |
 
-> 🧠 **Эмне чыныгы база, эмне mock эмес?**
-> Бул этаптын максаты — «Java Entity менен SQL таблицасы таптак келеби»
-> дегенди көрсөтүү. Репозиторийди mock кылсак, Entity'нин катасы
-> (тип, узундук, `@Enumerated`) **эч кимде болбой эле**. Ошондуктан
-> бардык тест чыныгы PostgreSQL менен иштейт.
->
-> 🧡 Тесттер `@Transactional` — бүткөндөн кийин автоматтык **rollback**,
-> база таза калат, бир тест экинчисин бузбайт.
+🆕 `AuthLoginJwtTest` сиз берген **22 талапты** камтыйт (бир нече шарт бир тестте):
 
-## API чакыруусу
+| # | Талап | Текшерүү |
+|---|---|---|
+| 1 | Туура email+пароль | 200 |
+| 2 | Бош пароль | 401 |
+| 3 | Бейтарап email | 401 |
+| 4 | **Жооптор бирдей** | `message` таалары салыштырылды |
+| 5 | Чоң/кичи тамга | `LOGIN-TEST@` иштеди |
+| 6-7 | Пароль жок | Жоопто `password`, `$2a$` жок |
+| 8-10 | `tokenType`, `expiresIn` | `Bearer`, `900`, 3 бөлүк |
+| 11 | Токен менен `/me` | 200 |
+| 12 | Токен жок | 401 + JSON |
+| 13 | Бузулган токен | 401 |
+| 14 | Өткөн мөөрүт | 401 (кол мене курулган токен) |
+| 15 | Тамга топтош | 401 |
+| 16 | DB'де жок колдонуучу | 401 |
+| 17 | `USER` → `ROLE_USER` | ✓ |
+| 18-19 | Register/Login ачык | ✓ |
+| 20 | `/me` корголуу | `Basic ...` да 401 |
+| 21 | Токенде пароль хэши жок | Payload **чечилди** текширилди |
+| 22 | Сыр жооптордо жок | ✓ |
+
+### 🧠 14-тест: мөөрүтү өткөн токенди КОЛ МЕНЕ курабыз
+
+Чыныгы 15 минутты **күтүүгө** убакыт жок. Ошондуктан сыноо ушул сыр менен
+өз убагынан 1 мүн өткөн токенди курат. Биз сыныкчыны колдонууга жарамайт —
+бирок **чыныгы колдонмодун сыры менен** курабыз (тест 22 ошол сырды колдонот).
+
+## Чыныгы HTTP сыноолору (curl)
 
 ```bash
-# Катталуу -> 201 Created
-curl -X POST http://localhost:8080/api/auth/register \
+# 1) Логин -> 200
+curl -X POST http://localhost:8080/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"fullName":"Алиев Али","email":"Ali@Example.COM","password":"Password123!"}'
+  -d '{"email":"ali@example.com","password":"Password123!"}'
 
-# {"id":53,"fullName":"Алиев Али","email":"ali@example.com",
-#  "role":"USER","createdAt":"2026-09-28T11:33:07Z"}
-#                              ↑ автоматтык кичи тамга
+# 2) Токен менен /me -> 200
+curl http://localhost:8080/api/users/me -H "Authorization: Bearer $TOKEN"
+
+# 3) Токен ЖОК -> 401
+curl http://localhost:8080/api/users/me
+
+# 4) БУЗУЛГАН токен -> 401
+curl http://localhost:8080/api/users/me -H "Authorization: Bearer invalid-token"
+
+# 5) БАШКА ПАРОЛЬ -> 401 "Invalid email or password"
+curl -X POST http://localhost:8080/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"ali@example.com","password":"WrongPassword"}'
 ```
 
-| Ката | HTTP | Мисалы |
-|---|---|---|
-| Email мурун катталган | **409** | `"An account with email '...' is already registered"` |
-| Валидация | **400** | `fieldErrors: [{field, message}, ...]` |
-| Ички ката | **500** | `"An unexpected error occurred..."` (логго толук маалымат) |
+Чыныгы натыйжа:
 
-> 🔴 Ката жоопторунда **stack trace жок** — 10-тест бул текширет. Ички
-> детальдер (DB жолдору, класстар) логго гана жазылат.
-
-## Маалымат базасын көрүү
-
-```bash
-docker compose exec postgres psql -U minibank -d minibank -c \
-  "SELECT id, full_name, email, password_hash, role FROM users;"
-```
-
-```
- id | full_name |      email      |                        password_hash                         | role
-----+-----------+-----------------+--------------------------------------------------------------+------
- 53 | Алиев Али | ali@example.com | $2a$10$viqJMj80CGQLMa/hY9gBp.1I95Fs/.tC3jG4WVwoN582clZVJlaRu | USER
-```
+| Сыноо | Натыйжа |
+|---|---|
+| Логин (туура) | `HTTP 200`, `tokenType: Bearer`, `expiresIn: 900` |
+| `/me` + токен | `HTTP 200` → `{"id":53,...,"role":"USER"}` |
+| `/me` токенсиз | `HTTP 401` JSON |
+| `/me` бузулган токен | `HTTP 401` JSON |
+| `/me` тамга топтош | `HTTP 401` |
+| `/me` башка сыр менен | `HTTP 401` |
+| Бош пароль | `HTTP 401` `"Invalid email or password"` |
+| Бейтарап email | `HTTP 401` `"Invalid email or password"` ← **бирдей** |
 
 ## Командалар
 
 ```bash
-docker compose up -d      # PostgreSQL (база жок болсо)
+docker compose up -d      # PostgreSQL
 ./mvnw spring-boot:run    # http://localhost:8080
-./mvnw test               # 21 тест
+./mvnw test               # 40 тест
 ./mvnw clean package
 ```
 
@@ -403,7 +583,8 @@ src/main/resources/
 | 0 | Чөйрөнү текшерүү | ✅ |
 | 1 | Project Skeleton | ✅ |
 | 2 | PostgreSQL + Flyway + таблицалар | ✅ |
-| 3 | Registration (3A) ✅ / Login + JWT (3B) | ⬜ |
+| 3A | Registration (User, BCrypt, Entity) | ✅ |
+| 3B | Login + JWT + Security | ✅ |
 | 4 | Accounts | ⬜ |
 | 5 | Deposit / Withdraw / Transfer | ⬜ |
 | 6 | Transaction History | ⬜ |

@@ -9,6 +9,7 @@ import com.minibank.dto.user.UserResponse;
 import com.minibank.entity.Role;
 import com.minibank.entity.User;
 import com.minibank.exception.EmailAlreadyRegisteredException;
+import com.minibank.exception.UserNotFoundException;
 import com.minibank.mapper.UserMapper;
 import com.minibank.repository.UserRepository;
 
@@ -62,6 +63,13 @@ public class UserService {
      * @param request — колдонмону келген маалымат (анын парольсүз)
      * @return        — колдонуучу маалыматы (парольсүз, көрүнүш үчүн гана)
      */
+    @Transactional(readOnly = true)
+    public UserResponse getById(Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new UserNotFoundException("User with id " + id + " not found"));
+        return userMapper.toResponse(user);
+    }
+
     @Transactional
     public UserResponse register(RegisterRequest request) {
 

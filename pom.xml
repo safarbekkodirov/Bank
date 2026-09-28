@@ -26,6 +26,7 @@
 
     <properties>
         <java.version>21</java.version>
+        <jjwt.version>0.13.0</jjwt.version>
     </properties>
 
     <dependencies>
@@ -80,10 +81,52 @@
             <artifactId>spring-security-crypto</artifactId>
         </dependency>
 
+        <!-- Spring Security: чыныгы HTTP коопсуздук чыпкалары (3B+).
+             Бул азыр BCrypt гана эмес, толук фильтр-чөйрөнү берет.
+             Биз АНЫН ӨЗ SecurityConfig'ибизди жазабыз — Spring'дин
+             демкилгизди киргизиш бетинен (form login) баш тартабыз. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- JJWT — JWT токенди жасоо жана текшерүү үчүн.
+             Spring Boot бул китепкананы башкарбайт, ошондуктан
+             версияны МЫКТЫҮН өзүбүз жазабыз.
+
+             -jjwt-api   : compile — биз колдонгон класстар (Jwts, Claims)
+             -jjwt-impl  : runtime — JJWT'нин өз иштеп жүгүнү
+             -jjwt-jackson: runtime — аны JSON менен байланыштыруучу
+             Spring Boot 3.x => Jakarta (javax эМЕС). JJWT 0.12+ ушул стандартка өттү. -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
         <!-- JUnit 5 + AssertJ + Mockito + Spring Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Security тесттери үчүн: @WithMockUser, securityMockMvc() -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
 

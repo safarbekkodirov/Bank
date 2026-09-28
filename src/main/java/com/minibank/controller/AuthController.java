@@ -7,8 +7,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.minibank.dto.auth.AuthResponse;
+import com.minibank.dto.auth.LoginRequest;
 import com.minibank.dto.auth.RegisterRequest;
 import com.minibank.dto.user.UserResponse;
+import com.minibank.service.AuthService;
 import com.minibank.service.UserService;
 
 import jakarta.validation.Valid;
@@ -38,9 +41,11 @@ import jakarta.validation.Valid;
 public class AuthController {
 
     private final UserService userService;
+    private final AuthService authService;
 
-    public AuthController(UserService userService) {
+    public AuthController(UserService userService, AuthService authService) {
         this.userService = userService;
+        this.authService = authService;
     }
 
     /**
@@ -57,5 +62,22 @@ public class AuthController {
         UserResponse response = userService.register(request);
         // 201 Created = "Жаңы нерсе жаратылды" (анын дареси бар).
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /**
+     * POST /api/auth/login — логин
+     *
+     * 200 OK  = токен алынды
+     * 400     = каталуу маалымат (email жаман, пароль бош)
+     * 401     = email же пароль туура эмес
+     *
+     * 🔴 БУЛ ENDPOINT АЧЫК (permitAll) — токен керек ЭМЕС. Анда
+     *    токен алышат. SecurityConfig'теги authorizeHttpRequests()
+     *    аны ошондой жазып калган.
+     */
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+        AuthResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
     }
 }

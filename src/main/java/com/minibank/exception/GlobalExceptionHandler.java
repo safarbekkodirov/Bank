@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.minibank.dto.common.ApiError;
 import com.minibank.dto.common.ApiError.FieldViolation;
+import com.minibank.exception.InvalidCredentialsException;
+import com.minibank.exception.UnauthorizedException;
+import com.minibank.exception.UserNotFoundException;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -36,6 +39,62 @@ import jakarta.servlet.http.HttpServletRequest;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /**
+     * 401 UNAUTHORIZED — пароль туура эмес же колдонуучу таанылбады.
+     *
+     * 🧠 Биз «Invalid email or password» деп БИР message беребиз.
+     *     Эгер «бундай email жок» деп айтсак, чыгаруучу чоң таблицада
+     *     кайсы эсептер BAR экенин аныктап алар эле (user enumeration).
+     *     «Пароль туура эмес» десек — эсеп бар экенин ачып беребиз.
+     *     Демек: эки учурда БИРДЕЙ жооп.
+     */
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ApiError> handleInvalidCredentials(
+            InvalidCredentialsException ex, HttpServletRequest request) {
+
+        log.warn("Failed login attempt on {}", request.getRequestURI());
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiError.of(
+                        HttpStatus.UNAUTHORIZED.value(),
+                        HttpStatus.UNAUTHORIZED.getReasonPhrase(),
+                        ex.getMessage(),
+                        request.getRequestURI()));
+    }
+
+    /**
+     * 401 UNAUTHORIZED — сүрөттүн ичинде эч ким жок.
+     * (Бул GlobalExceptionHandler аркылуу эмес, SecurityConfig'теги
+     *  RestAuthenticationEntryPoint аркылуу кайтарылат. Бул жердеги
+     *  — SecurityUtils чалган учур үчүн, эгер Controller кодуна келип калса.)
+     */
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiError> handleUnauthorized(
+            UnauthorizedException ex, HttpServletRequest request) {
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiError.of(
+                        HttpStatus.UNAUTHORIZED.value(),
+                        HttpStatus.UNAUTHORIZED.getReasonPhrase(),
+                        ex.getMessage(),
+                        request.getRequestURI()));
+    }
+
+    /**
+     * 404 NOT FOUND — изделген нерсе жок.
+     */
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ApiError> handleNotFound(
+            UserNotFoundException ex, HttpServletRequest request) {
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiError.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        HttpStatus.NOT_FOUND.getReasonPhrase(),
+                        ex.getMessage(),
+                        request.getRequestURI()));
+    }
 
     /**
      * 409 CONFLICT — колдонмону катталып жатат.
