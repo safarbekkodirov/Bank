@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +16,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.minibank.repository.UserRepository;
 
 /**
  * КАТТАЛУУ ТЕСТИ (HTTP катмары).
@@ -38,6 +41,20 @@ class AuthControllerRegistrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    /**
+     * 🧠 Тест БАЗА ТАЗА деп өз ишин катуулбаш керек.
+     *   Бул @Transactional тест — тазалоо бүткөндөн кийин РОЛЛБЭК болуп,
+     *   сен колдонуучуң базада КАЛЫП КЕЛЕТ. Демек чыныгы маалымат ушул
+     *   сыноодон убакыт өчүрүлбөйт.
+     */
+    @BeforeEach
+    void clearUsersTable() {
+        userRepository.deleteAll();
+    }
 
     @Test
     @DisplayName("1. POST /api/auth/register -> 201 Created")

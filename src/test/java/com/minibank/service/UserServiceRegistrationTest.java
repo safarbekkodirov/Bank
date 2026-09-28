@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Optional;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +51,27 @@ class UserServiceRegistrationTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    /**
+     * 🧠 ЭМНЕ БУЛ КЕРЕК? Тест БАЗА ТАЗА деп өз ишин катуулбаш керек.
+     *
+     * Чыныгы окуя: биз curl менен бир колдонуучу каттарып, базага
+     * "ali@example.com" калдырдык. Тест да "ali@example.com" колдонду —
+     * жана БАЙКОЛБОЙ ӨЗҮН ТАБЫЛЫП, ЖЫГЫЛДИ. Бул "бир убакта иштеген,
+     * бирок бирге иштебеген" тест — ЭҢ КАЙРЫТКАНЫ.
+     *
+     * Чечим: ар бир тесттин АЛДЫНда тазалоо. Бирок @Transactional деген
+     * тестте — бүткөндөн кийин РОЛЛБЭК болгондуктан, тазалоу да
+     * КАЙТЫЛАТ. Демек:
+     *     тест башында  -> users = 0
+     *     тест ичинде  -> катталып, текшерилет
+     *     тест аягында -> РОЛЛБЭК -> колдонуучу кайра КАЛЫП КЕЛЕТ
+     * Сен каттарып койгон чыныгы колдонуучуң ЖОК БОЛБОЙТ.
+     */
+    @BeforeEach
+    void clearUsersTable() {
+        userRepository.deleteAll();
+    }
 
     private RegisterRequest request(String fullName, String email, String password) {
         return new RegisterRequest(fullName, email, password);
