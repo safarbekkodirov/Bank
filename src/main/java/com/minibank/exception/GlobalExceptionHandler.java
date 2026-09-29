@@ -10,6 +10,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -126,6 +127,43 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleAccountNotFound(
             AccountNotFoundException ex, HttpServletRequest request) {
         return notFound(ex.getMessage(), request);
+    }
+
+    /**
+     * 415 UNSUPPORTED MEDIA TYPE - klient bize "application/json" diýip
+     * ýalňyş özi habar berdi.
+     *
+     * 🧡 BU NÄME ÜÇIN? (PHASE 9 auditda tapyldy - 29-njy bend)
+     *     Ilki ýagdaý: klient "email=a@b.com" ýazýar, Content-Type:
+     *     text/plain diýip belläýär. Bu KLIENTIŇ kadasy - biz
+     *     ony düşünmedik. Ýöne biziň jogabymyz 500 BOLÝARDY:
+     *     Spring HttpMediaTypeNotSupportedException taşlaýar, ol
+     *     ýygnama (Exception.class) -a düşýärdi.
+     *     Ýaňyş netije: "server döwüldi" - bu ÝALŇYŞ we akym
+     *     netijesini döredýär (asynkron zähmet, altynky birnäçe
+     *     ýalňyş 500 diýip sanalýar, monitorda gyzyl galkyn).
+     *     DOGRY jogap: 415 = "men bu şekili bilýärim, emma
+     *     application/json däl".
+     *
+     * 🔴 MAGLUMAT SYZMAÝAR: ex.getMessage() "Content type
+     *     'text/plain;charset=UTF-8' not supported" diýip ýazyldyr -
+     *     bu klientiň öz ýalňyşy, ýöne bize gerek ýok. Biz öz
+     *     ýygnamamyzy döredýäris.
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiError> handleUnsupportedMediaType(
+            HttpMediaTypeNotSupportedException ex, HttpServletRequest request) {
+
+        log.warn("Unsupported media type on {}", request.getRequestURI());
+
+        ApiError error = ApiError.of(
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(),
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE.getReasonPhrase(),
+                "Unsupported Content-Type. Use application/json",
+                request.getRequestURI());
+
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(error);
     }
 
     /**

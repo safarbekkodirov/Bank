@@ -19,7 +19,7 @@ Java Backend, Spring Boot, PostgreSQL, REST API, Authentication жана бан�
 | Flyway | (Spring Boot менен биге келед) |
 | JUnit 5 | (Spring Boot Test менен биге келед) |
 
-## Учурдагы абал: **PHASE 8 — Admin API + RBAC**
+## Учурдагы абал: **PHASE 9 — Integration Hardening & Reliability**
 
 Эми иштеп ятат: эсеп ачабыз, акча салýarys, çekýäris, başga esäbe geçirýäris we
 öz operasiýalarymyzyň **taryhyny sahypa sahypa** görýäris. Ähli amallar
@@ -29,7 +29,7 @@ tokenden yzarlanýar — klient öz eýesini başgasynyň taryhyna geçirip bilm
 Transfer (iki esap arasynda), Transaction History (pagination + filter), we
 **Admin API** (ROLE_ADMIN — diňe okaýan administrator paneli).
 
-Азыр ýok: Integration Hardening, Frontend.
+Азыр ýok: Frontend.
 
 🔴 **PHASE 8 read-only**: admin üçin `GET` endpointler bar
 (`/api/admin/**`). Emma admin **akça hereketlendiremez**, **role
@@ -886,5 +886,71 @@ src/main/resources/
 | 6 | Transfer (atomicity, deadlock goragy) | ✅ |
 | 7 | Transaction History (pagination + filter) | ✅ |
 | 8 | Admin API + Role-Based Access Control | ✅ |
-| 9 | Integration Hardening | ⬜ |
+| 9 | Integration Hardening & Reliability | ✅ |
 | 10 | Frontend | ⬜ |
+---
+
+# PHASE 9 — Integration Hardening & Reliability
+
+Jaña biznes-funksiýa **ÝOK**. Bu faza diňe bar bolan 8 fazany
+**gözden geçirmäge**, ýalňyşlary tapmaga we subut bilen ýapmaga
+gönükdirildi.
+
+## Nämä edildi
+
+**Error contract** — ähli jogaplar bir formatda (`ApiError`):
+`timestamp, status, error, message, path, fieldErrors`.
+
+| Status | Ýagdaý | Synag |
+|---|---|---|
+| 400 | ýalňyş ölçeg / ýarym JSON | 2 |
+| 401 | token ýok / buzulgan | 2 |
+| 403 | USER → admin endpoint | 1 |
+| 404 | ýok endpoint / ýok esap | 2 |
+| 405 | ýer bar, usul ýok | 1 |
+| 409 | ýeterlik däl / esap ýok | 2 |
+| 415 | nädogry Content-Type | 1 |
+| 500 | çäksiz ýagdaý | 1 |
+
+**Information leakage** — jogapta `stack trace`, `org.springframework.*`,
+`java.lang.*`, `jdbc:postgresql://`, faýl ýoly, SQL çykarmaýar.
+Jogap **diňe** öz ýazgymyz bilen çykýar.
+
+**Security hardening** — JWT 7 hal (ýok/buzulgan/üýtgedilen/möhleti
+geçen/başga imza/başga issuer/ýalňyş subject), mass assignment
+(`role":"ADMIN"` ýazsa → `USER` galýar), IDOR, parol sızdırmak ýok.
+
+**Money safety** — `BigDecimal` diňe, `compareTo` bilen deňeşdirme,
+scale 4, ters balans hiç haçan bolmaýar (konkurrent çekimde-de).
+
+**Transaction rollback** — 4 ýazuw (2 balans + 2 žurnal) hemişe
+hemelelikde; ýalňyşda ÄHLISI gaýtarýar.
+
+**Concurrency regression** — 20 parallel deposit → **2000**
+(lost update ýok); A→B we B→A parallel → **deadlock ýok**;
+30 parallel withdraw → balans **hiç haçan terse däl**.
+
+**DB integrity** — FK `ON DELETE RESTRICT`: ýazgysy bolan esep/user
+ýok edilmeýär (CASCADE bolsaydym — akçanyň barlagy ýitýärdi).
+
+## Tapylan we düzedilen ýalňyş
+
+🔴 **415 ýalňyşlyk ýagdaýda 500 berýärdi.** Klient `Content-Type:
+text/plain` ýazsa, Spring `HttpMediaTypeNotSupportedException`
+taşlaýardy — handler ýok ýaly, umumi `Exception` → **500**
+("server döwüldi"). Handler goşuldu → **415** + regression test.
+
+## Testler
+
+**305/305 passed** (43 täze, 5 sany integration synak).
+
+| Faýl | Sany |
+|---|---|
+| `ErrorContractTest` | 14 |
+| `SecurityHardeningTest` | 20 |
+| `AtomicityConcurrencyRegressionTest` | 6 |
+| `EndToEndIntegrationTest` | 2 |
+| `DatabaseIntegrityTest` | 1 |
+
+Flyway migration: **5** (üýtgemeýär). `ddl-auto=validate`,
+`open-in-view: false` — saklanýar.
