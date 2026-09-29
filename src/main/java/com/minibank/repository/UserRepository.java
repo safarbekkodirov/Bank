@@ -3,6 +3,7 @@ package com.minibank.repository;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import com.minibank.entity.User;
@@ -25,7 +26,9 @@ import com.minibank.entity.User;
  *   Анын ичинен дароо келет: save(), findById(), findAll(), delete()...
  */
 @Repository
-public interface UserRepository extends JpaRepository<User, Long> {
+public interface UserRepository
+        extends JpaRepository<User, Long>,
+                JpaSpecificationExecutor<User> {
 
     /**
      * Email боюнча издөө.
@@ -44,4 +47,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * findByEmail().isPresent() кеттирсе, бирок exists жөнүүнөн тез.
      */
     boolean existsByEmail(String email);
+
+    /*
+     * PHASE 8 uchun SpecificationExecutor goşuldy (yokaryda extends).
+     * Admin "search" ukaby dinamiki: fullName ýa-da email boýunça.
+     * Düzgünli metod (findByEmailContaining) goýsa, iki sany ýazmaly
+     * ýa-da boş netije gatyşyk emele gelýär - Specification bolsa
+     * BIR ýere ýygnanýar: "şu şerti goş, şu şerti goşma".
+     */
 }

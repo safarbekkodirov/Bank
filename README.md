@@ -19,16 +19,22 @@ Java Backend, Spring Boot, PostgreSQL, REST API, Authentication жана бан�
 | Flyway | (Spring Boot менен биге келед) |
 | JUnit 5 | (Spring Boot Test менен биге келед) |
 
-## Учурдагы абал: **PHASE 7 — Transaction History**
+## Учурдагы абал: **PHASE 8 — Admin API + RBAC**
 
 Эми иштеп ятат: эсеп ачабыз, акча салýarys, çekýäris, başga esäbe geçirýäris we
 öz operasiýalarymyzyň **taryhyny sahypa sahypa** görýäris. Ähli amallar
 tokenden yzarlanýar — klient öz eýesini başgasynyň taryhyna geçirip bilmeýär.
 
 Иşleýän funksiýalar: Registration, JWT login, Bank Account, Deposit, Withdraw,
-Transfer (iki esap arasynda), Transaction History (pagination + filter).
+Transfer (iki esap arasynda), Transaction History (pagination + filter), we
+**Admin API** (ROLE_ADMIN — diňe okaýan administrator paneli).
 
-Азыр ýok: Admin, Integration Hardening, Frontend.
+Азыр ýok: Integration Hardening, Frontend.
+
+🔴 **PHASE 8 read-only**: admin üçin `GET` endpointler bar
+(`/api/admin/**`). Emma admin **akça hereketlendiremez**, **role
+üýtgedip bilmez**, **kimse ýok edip bilmez** — bu ýatdaşdyr
+(27/28-njy bendler).
 
 ---
 
@@ -176,6 +182,58 @@ GET /api/accounts/me/transactions?page=0&size=20&type=DEPOSIT
 — tertip `created_at DESC, id DESC` (iň täze birinji, tertip anyk).
 
 🔴 `/api/accounts/{id}/transactions` **ýok** — taryh diňe öz eýesine görünýär.
+---
+
+# PHASE 8 — Admin API + Role-Based Access Control
+
+ADMIN üçin aýratyn, goragly **okaýan** (read-only) API. RBAC
+Spring Security arkaly: `/api/admin/**` -> `hasRole("ADMIN")`.
+
+## RBAC düzgüni
+
+| Endpoint | USER | ADMIN | Token ýok |
+|---|---|---|---|
+| `/api/accounts/me` | 200 | 200 | 401 |
+| `/api/accounts/me/transactions` | 200 | 200 | 401 |
+| `/api/admin/users` | **403** | 200 | 401 |
+| `/api/admin/users/{id}` | **403** | 200 | 401 |
+| `/api/admin/accounts` | **403** | 200 | 401 |
+| `/api/admin/accounts/{id}` | **403** | 200 | 401 |
+| `/api/admin/accounts/{id}/transactions` | **403** | 200 | 401 |
+
+🔴 **Rol bazadan alynýar, token-den däl.** `JwtAuthenticationFilter`
+koldugyny bazadan okaýar — token-däki `role` claim ýetirilýär,
+emma çözgüt üçin **ulanylmaýar**.
+
+## Endpointler
+
+| Endpoint | Kod | Maglumat |
+|---|---|---|
+| `GET /api/admin/users` | **200** | Ähli kollonuwçular (pagination, search) |
+| `GET /api/admin/users/{id}` | **200** | Bir kollonuwçu / 404 |
+| `GET /api/admin/accounts` | **200** | Ähli es epler (user maglumaty bilen) |
+| `GET /api/admin/accounts/{id}` | **200** | Bir esap / 404 |
+| `GET /api/admin/accounts/{id}/transactions` | **200** | Esabyň taryhy (filter bilen) |
+| | **400** | `page<0`, `size>100`, nädogry `type`, `from>to` |
+| | **401** | Token ýok / buzulgan |
+| | **403** | USER roly bilen |
+
+**Parametrler** (hemmesi ýasy):
+- `/users`: `page` (0), `size` (20, max 100), `search` (at/email, harpuly däl)
+- `/accounts`: `page`, `size`, `userId`
+- `/accounts/{id}/transactions`: `page`, `size`, `type`, `from`, `to`, `minAmount`, `maxAmount`
+
+**Sertleşme** — tertip `createdAt DESC, id DESC` (deterministik).
+Klient erkin tertip bermeýär.
+
+🔴 **Parol hasy** `AdminUserResponse`-da **hiç haçan** ýok. Testler barlaýar.
+
+🔴 **Maglumat syzdyrmak ýok**: 403-de umumy jogap — esebiň ýa-da
+kollonuwçynyň bar/ýokdygy aýrylmaýar.
+
+🟡 **N+1 ýok**: `Account.user` LAZY, şonuň üçin `JOIN FETCH`
+ulanylýar — 20 esep = 1 sorag, 21 sorag däl.
+
 
 
 
@@ -827,6 +885,6 @@ src/main/resources/
 | 5 | Deposit / Withdraw | ✅ |
 | 6 | Transfer (atomicity, deadlock goragy) | ✅ |
 | 7 | Transaction History (pagination + filter) | ✅ |
-| 8 | Admin | ⬜ |
+| 8 | Admin API + Role-Based Access Control | ✅ |
 | 9 | Integration Hardening | ⬜ |
 | 10 | Frontend | ⬜ |

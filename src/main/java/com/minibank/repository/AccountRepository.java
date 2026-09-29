@@ -3,7 +3,10 @@ package com.minibank.repository;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -22,7 +25,9 @@ import com.minibank.entity.Account;
  *   Сен "эмнени табабыз?" деп сөйлөйсөң — SQL САРТТАН ЖАЗЫЛБАЙТ.
  */
 @Repository
-public interface AccountRepository extends JpaRepository<Account, Long> {
+public interface AccountRepository
+        extends JpaRepository<Account, Long>,
+                JpaSpecificationExecutor<Account> {
 
     /** Эсеп номуру боюнча (банкоматтан издөө сыяктуу). */
     Optional<Account> findByAccountNumber(String accountNumber);
@@ -159,4 +164,51 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     /** 🆕 PHASE 6: эсеп номуру боюнча ИЧКИ НОМУРУ (эсепсyz окуу). */
     @Query("select a.id from Account a where a.accountNumber = :accountNumber")
     Optional<Long> findIdByAccountNumber(@Param("accountNumber") String accountNumber);
+
+    /*
+     * ==========================================================================
+     *  PHASE 8 - ADMIN: esep list + user maglumaty BIR SORAGDA
+     * ==========================================================================
+     *
+     *  🟡 BU NÄME ÜÇIN? (N+1 meselesi - iň möhüm optimizasiýa)
+     *
+     *     Account.user = @ManyToOne(fetch = LAZY). Eger biz ýöne
+     *     findAll(pageable) diýip esepleri alsa, we soňra mapperde
+     *     her bir esep üçin account.getUser().getEmail() çağyrsak,
+     *     Hibernate her birine AYRY sorag iberýär:
+     *
+     *         SELECT * FROM accounts LIMIT 20     -- 1 sorag
+     *         SELECT * FROM users WHERE id=1      -- 2-nji sorag
+     *         SELECT * FROM users WHERE id=2      -- 3-nji sorag
+     *         ... (20 sany esep = 20 sorag)
+     *
+     *     Bu "N+1" meselesi: 1 + N sorag. 1000 esep bolso -
+     *     1001 sorag! Seňil kompýuterde bir sekuntka çykyp keteýär.
+     *
+     *  ✅ ÇÖZÜT: JOIN FETCH. "esep bilen birlikde onuň eýesini
+     *     hem BIR soragda getir" diýip ýazýarys:
+     *
+     *         SELECT a.*, u.* FROM accounts a
+     *         JOIN users u ON u.id = a.user_id
+     *         ORDER BY ... LIMIT 20 OFFSET 0
+     *
+     *     Netije: 1 sorag - 20 esep, 20 ulanyjy bilen.
+     *     Bu "LEFT JOIN FETCH" - emma INNER JOIN ýaly üçün ýeterlik.
+     *
+     *  🧡 Pageable bilen näme üçin duýş gelýär?
+     *     PostgreSQL hasaplamak üçin bäş sany ýazgy erman
+     *     ýygnaýar, soňra olaryň 20-sini kesip alýar - ýagny
+     *     JOIN FETCH barlanan köp ýazgy ýetirýär. Bu 20 ýeňil
+     *     çemeleşme. Yöne üns beriň: eger "pageable" ýok bolsa
+     *     bu duýş ýOK.
+     *
+     *  @param pageable ADMIN list üçin sahypa + createdAt DESC, id DESC
+     */
+    @Query(value = "select a from Account a join fetch a.user",
+            countQuery = "select count(a) from Account a")
+    Page<Account> findAllWithUser(Pageable pageable);
+
+    /** PHASE 8: aýratyn esep + eýesi (admin /accounts/{id} üçin). */
+    @Query("select a from Account a join fetch a.user where a.id = :id")
+    Optional<Account> findByIdWithUser(@Param("id") Long id);
 }

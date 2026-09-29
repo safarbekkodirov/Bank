@@ -75,6 +75,21 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         // "Мен киммин?" — токен МИНЖИЛДУУ
                         .requestMatchers(HttpMethod.GET, "/api/users/me").authenticated()
+                        // 🔐 PHASE 8: ADMIN ZOLAGI — iň ULU öňcelikde!
+                        //    Bu TERTIP MÖHÜМ: aşakdaky anyRequest()
+                        //    "giriş gerek" diýip diňe şol sany
+                        //    ýagdaýy gözbaş alýar. Eger admin
+                        //    şerti ANYREQUEST-den SOW bolup ýazylsa,
+                        //    ol HEÇ KADA işletmeýär we USER hem
+                        //    /api/admin/** geçip kiterdi.
+                        //    hasRole("ADMIN") -> "ROLE_ADMIN" izleýär;
+                        //    JwtAuthenticationFilter bolsa role-i
+                        //    MAALYMAT BAZASYNDAN okap goşýar
+                        //    (token-däki role däl!). Şonuň üçin
+                        //    bazadaky role üýtgen bolsa, taze token
+                        //    gerek bolýar - eski token eski ygtyýary
+                        //    saklaýar.
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // БАШКА БАРДЫК API — токенсиз КИРБЕЙТ
                         // (Фаза 4+ эсеп/акча чыгаар — ал азыр жок, эртең коргоого алабыз)
                         .anyRequest().authenticated())

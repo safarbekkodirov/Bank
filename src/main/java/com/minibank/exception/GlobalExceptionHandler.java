@@ -10,6 +10,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -125,6 +126,47 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleAccountNotFound(
             AccountNotFoundException ex, HttpServletRequest request) {
         return notFound(ex.getMessage(), request);
+    }
+
+    /**
+     * 405 METHOD NOT ALLOWED - bu URL bar, emma bu usul (GET/POST...)
+     * bilen degil.
+     *
+     * 🧡 BU NÄME ÜÇIN GEREK? (PHASE 8-de tapyldy)
+     *     Nomazdaky 26/27/28-njy bendler diýýär: admin üçin DELETE
+     *     we PUT endpointler BOLMALY DÄL. Ol ýok. Ýöne ol ýok bolan
+     *     ýerine klient DELETE ýa-da PUT ýaýsa, näme ýüze çykýar?
+     *
+     *     Spring "bu usul bu ýerde ýok" diýip
+     *     HttpRequestMethodNotSupportedException taşlaýar. Ol ýygnama
+     *     (Exception.class -> 500) düşýärdi -> klient "server döwüldi"
+     *     diýip gülümserdi. ÝALŇYŞ.
+     *
+     *     DOGRY jogap: 405. Bu "men bu ýeri bilýärim, ýöne bu
+     *     usul bilen bir ädim bolmaýar" diýän many berýär.
+     *
+     * 🔴 MAGLUMAT SYZMAÝAR: ex.getMessage()-da "Allow: GET, HEAD"
+     *     ýaly maslahat bolýar - ol peýdaly maglumat, ýöne umumi
+     *     formatsa görkezmek ýeterlik. Biz diňe ownuk sanawy
+     *     döredýäris.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMethodNotAllowed(
+            HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+
+        log.warn("Method not allowed on {}: {}",
+                request.getRequestURI(), ex.getMethod());
+
+        ApiError error = ApiError.of(
+                HttpStatus.METHOD_NOT_ALLOWED.value(),
+                HttpStatus.METHOD_NOT_ALLOWED.getReasonPhrase(),
+                "Request method is not supported for this endpoint",
+                request.getRequestURI());
+
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .header("Allow", String.join(", ", ex.getSupportedMethods() == null
+                        ? new String[0] : ex.getSupportedMethods()))
+                .body(error);
     }
 
     private ResponseEntity<ApiError> notFound(String message, HttpServletRequest request) {
