@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.minibank.entity.Role;
 import com.minibank.entity.User;
 import com.minibank.repository.AccountRepository;
+import com.minibank.repository.TransactionRepository;
 import com.minibank.repository.UserRepository;
 import com.minibank.security.JwtService;
 
@@ -45,6 +46,9 @@ class AccountApiSecurityTest {
     private UserRepository userRepository;
 
     @Autowired
+    private TransactionRepository transactionRepository;
+
+    @Autowired
     private AccountRepository accountRepository;
 
     @Autowired
@@ -60,6 +64,13 @@ class AccountApiSecurityTest {
 
     @BeforeEach
     void cleanTables() {
+        // 🔴 PHASE 7: transactions MÖHÜM - esabimizde ýazgy bolmaly ýok.
+        //    Bu tablitsa PHASE 5-6-dan bäri bar, emma bu testler ony
+        //    arassalamýardy. Netijede: esap açan testler başga
+        //    testleriň galdyryan ýazgylary bilen birlikde FK katasyna
+        //    düşýärdi ("accounts violates foreign key on transactions").
+        //    Tertip hökmany: transactions -> accounts -> users.
+        transactionRepository.deleteAll();
         accountRepository.deleteAll();
         userRepository.deleteAll();
     }

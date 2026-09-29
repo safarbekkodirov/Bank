@@ -19,12 +19,16 @@ Java Backend, Spring Boot, PostgreSQL, REST API, Authentication жана бан�
 | Flyway | (Spring Boot менен биге келед) |
 | JUnit 5 | (Spring Boot Test менен биге келед) |
 
-## Учурдагы абал: **PHASE 4 — Bank Account Domain**
+## Учурдагы абал: **PHASE 7 — Transaction History**
 
-Эми иштеп жатат: чыныгы банк эсеби. Токен менен эсеп ачабыз, өз эсебибизди
-көрөбүз. Сырткы колдонуучу өз эсебин гана көрөт.
+Эми иштеп ятат: эсеп ачабыз, акча салýarys, çekýäris, başga esäbe geçirýäris we
+öz operasiýalarymyzyň **taryhyny sahypa sahypa** görýäris. Ähli amallar
+tokenden yzarlanýar — klient öz eýesini başgasynyň taryhyna geçirip bilmeýär.
 
-Азыр жок: Deposit, Withdraw, Transfer, Transaction, Admin, Frontend.
+Иşleýän funksiýalar: Registration, JWT login, Bank Account, Deposit, Withdraw,
+Transfer (iki esap arasynda), Transaction History (pagination + filter).
+
+Азыр ýok: Admin, Integration Hardening, Frontend.
 
 ---
 
@@ -142,6 +146,36 @@ V1'де `CHAR(3)` жазган элем, Java `String` болсо Hibernate `VAR
 
 Request body **талап кылынбайт** — эсептин маалыматы колдонуучуга эмес,
 **токенге** жараша түзүлөт.
+
+### PHASE 5-7 goşulan endpoinтler
+
+| Endpoint | Код | Маалымат |
+|---|---|---|
+| `POST /api/accounts/me/deposit` | **200** | Акча салуу (жurnal: DEPOSIT) |
+| `POST /api/accounts/me/withdraw` | **200** | Акça çekmek (jurnal: WITHDRAW) |
+| | **409** | Akça ýetmeýär |
+| `POST /api/accounts/me/transfer` | **200** | Başga esäbe geçirme (TRANSFER_OUT + TRANSFER_IN) |
+| | **409** | Akça ýetmeýär / öz-e özüne geçirme |
+| | **404** | Esap ýok |
+| `GET /api/accounts/me/transactions` | **200** | Öz taryhy (pagination + filter) |
+| | **400** | Nädogry parametr (`page<0`, `size>100`, `from>to`...) |
+| | **404** | Esap ýok |
+
+#### PHASE 7 — Transaction History
+
+```http
+GET /api/accounts/me/transactions?page=0&size=20&type=DEPOSIT
+    &from=2026-09-01T00:00:00Z&to=2026-09-30T23:59:59Z
+    &minAmount=100&maxAmount=1000
+```
+
+**Parametrlar** (hemmesi ýasy): `page` (0), `size` (20, iň ýokary 100),
+`type`, `from`, `to`, `minAmount`, `maxAmount`.
+
+**Jogap**: `{ content: [...], page, size, totalElements, totalPages, first, last }`
+— tertip `created_at DESC, id DESC` (iň täze birinji, tertip anyk).
+
+🔴 `/api/accounts/{id}/transactions` **ýok** — taryh diňe öz eýesine görünýär.
 
 
 
@@ -790,9 +824,9 @@ src/main/resources/
 | 3A | Registration (User, BCrypt, Entity) | ✅ |
 | 3B | Login + JWT + Security | ✅ |
 | 4 | Accounts (эсеп ачуу, 18 белгилик номер) | ✅ |
-| 5 | Deposit / Withdraw / Transfer | ⬜ |
-| 6 | Transaction History | ⬜ |
-| 7 | Admin | ⬜ |
-| 8 | Frontend | ⬜ |
-| 9 | Testing | ⬜ |
-| 10 | README / Docs | ⬜ |
+| 5 | Deposit / Withdraw | ✅ |
+| 6 | Transfer (atomicity, deadlock goragy) | ✅ |
+| 7 | Transaction History (pagination + filter) | ✅ |
+| 8 | Admin | ⬜ |
+| 9 | Integration Hardening | ⬜ |
+| 10 | Frontend | ⬜ |

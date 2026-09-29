@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -249,6 +250,57 @@ public class GlobalExceptionHandler {
                         HttpStatus.CONFLICT.getReasonPhrase(),
                         ex.getMessage(),
                         request.getRequestURI()));
+    }
+
+    /**
+     * 400 BAD REQUEST - history soragynyň parametri nädogry.
+     *
+     * 🧡 BU MEN NÄME ÜÇIN GEREK?
+     *     InvalidFilterException diýe bir ýalňyş döredip bilerim,
+     *     emma onu TUTMAÝAN handler bolmadyk bolsa, ol aşakdaky
+     *     umumi @ExceptionHandler(Exception.class) -a düşýärdi ->
+     *     klient 500 alardy. Ýagdaý: "sen nädogry ýazdyň" ýerine
+     *     "server döwüldi" diýip ýalňyş ýetýäris.
+     *     Şonuň üçin her ýana exception-yň ÖZ handler-i bolmaly.
+     *
+     * 🧡 400 NÄME ÜÇIN? 400 = "seniň sorag ýalňyş" (klientiň kadasy).
+     *     500 = "biz döwüldük" (bizniň kadamymyz). Bu ýagdaýda biz
+     *     dogry işledik - emma klient biziň düzgünimizi bilmeýärdi.
+     */
+    @ExceptionHandler(InvalidFilterException.class)
+    public ResponseEntity<ApiError> handleInvalidFilter(
+            InvalidFilterException ex, HttpServletRequest request) {
+
+        return badRequest(ex.getMessage(), request);
+    }
+
+    /**
+     * 400 BAD REQUEST - soragyň PARAMETRI tipi öwrüp bilenmedi.
+     *
+     * 🧡 BU NÄME ÜÇIN GEREK we näme üçin Service-de NÄDOGRY DÄL?
+     *     "?from=not-a-date" ýaly ýalňyşlyk Service-e HEMEN
+     *     ýetmeýär: Spring parameteri Instant-e öwürmäge çalyşýar,
+     *     ýalňyş ýylanda MethodArgumentTypeMismatchException taşlaýar.
+     *     Ol özümüze ýetirilmedik ýagdaýynda umumi Exception
+     *     handler-a düşýär -> 500.
+     *     Dogrusy: "klient nädogry wagt ýazdy" = 400. Bu ýerde
+     *     Service-e düşmek peýda bolmaz - şonuň üçin bu
+     *     controller gatlamasyna degişli ýalňyşdyr.
+     *
+     * 🛡️ MAGLUMAT GOLANMAÝAR: ýalňyşyň düzüminde (ex.getMessage())
+     *     "Failed to convert value of type..." diýen tehniki
+     *     ýazgy bolýar. Şony KLIENTE çykarmak bolmaýar - biz
+     *     diňe öz ýaly ýazgymyzy döredýäris.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+
+        log.warn("Malformed request parameter on {}: {}",
+                request.getRequestURI(), ex.getName());
+
+        String parameter = ex.getName();
+        return badRequest("Invalid value for parameter: " + parameter, request);
     }
 
     private ResponseEntity<ApiError> badRequest(String message, HttpServletRequest request) {

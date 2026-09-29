@@ -25,6 +25,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.minibank.entity.Role;
 import com.minibank.entity.User;
+import com.minibank.repository.TransactionRepository;
 import com.minibank.repository.UserRepository;
 import com.minibank.security.JwtProperties;
 import com.minibank.security.JwtService;
@@ -49,6 +50,9 @@ class AuthLoginJwtTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private TransactionRepository transactionRepository;
 
     @Autowired
     private JwtService jwtService;

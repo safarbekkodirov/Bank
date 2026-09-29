@@ -1,24 +1,34 @@
 package com.minibank.controller;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.minibank.dto.account.AccountResponse;
 import com.minibank.dto.transaction.MoneyOperationRequest;
 import com.minibank.dto.transaction.MoneyOperationResponse;
+import com.minibank.dto.common.PageResponse;
+import com.minibank.dto.transaction.TransactionFilter;
+import com.minibank.dto.transaction.TransactionResponse;
 import com.minibank.dto.transaction.TransferRequest;
 import com.minibank.dto.transaction.TransferResponse;
 import com.minibank.security.SecurityUtils;
 import com.minibank.service.AccountService;
 import com.minibank.service.MoneyService;
+import com.minibank.service.TransactionService;
 import com.minibank.service.TransferService;
 
 import jakarta.validation.Valid;
+
+import org.springframework.format.annotation.DateTimeFormat;
 
 /**
  * Банк эсептеринин REST APIсы.
@@ -52,13 +62,16 @@ public class AccountController {
     private final AccountService accountService;
     private final MoneyService moneyService;
     private final TransferService transferService;
+    private final TransactionService transactionService;
 
     public AccountController(AccountService accountService,
                              MoneyService moneyService,
-                             TransferService transferService) {
+                             TransferService transferService,
+                             TransactionService transactionService) {
         this.accountService = accountService;
         this.moneyService = moneyService;
         this.transferService = transferService;
+        this.transactionService = transactionService;
     }
 
     /**
@@ -167,5 +180,53 @@ public class AccountController {
     public TransferResponse transfer(@Valid @RequestBody TransferRequest request) {
         Long currentUserId = SecurityUtils.getCurrentUserId();
         return transferService.transfer(currentUserId, request);
+    }
+
+    /**
+     * GET /api/accounts/me/transactions - menim taryhym.
+     *
+     *  BU NEDE "/me/transactions" WE "/{id}/transactions" DÄL?
+     *     "Men kimmim?" soragyna "seniň öz taryhň" jogaby.
+     *     Eger "/{id}" ýazsaýdy, kollonuwçy 1,2,3... diýip sany
+     *     ýazyp, BAŞGALARYŇ taryhyny göre bilirdi (IDOR).
+     *     Şonuň üçin ýeke-täk ýol - tokenden.
+     *
+     *  SORAG PARAMETRLERI (hemmesi ÝASY, defaultly):
+     *     page=0    sahypa (0-dan başlaýar)
+     *     size=20   sahypada näçe ýazgy (iň ýokary 100)
+     *     type      DEPOSIT | WITHDRAW | TRANSFER_IN | TRANSFER_OUT
+     *     from      ISO-8601 wagt: 2026-09-01T00:00:00Z (inclusive)
+     *     to        ISO-8601 wagt: 2026-09-30T23:59:59Z (inclusive)
+     *     minAmount iň az suma
+     *     maxAmount iň köp suma
+     *
+     *  JOGAP KADALARY:
+     *     200 - her bitew (sahypa boş bolsa hem!)
+     *     400 - page<0, size<1, size>100, nädogry type, from>to
+     *     401 - token ýok
+     *     404 - kollonuwçynyň esaby ýok
+     *
+     *  🔴 JOGAPDA NÄMÄ ÝOK? Entity, parol, user obýegi - hiç haçan.
+     *  🟡 ORDER BY created_at DESC, id DESC - iň täze birinji we
+     *     tertip DETERMINISTIK (belgileri Service-de).
+     */
+    @GetMapping("/me/transactions")
+    public PageResponse<TransactionResponse> getMyTransactions(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+            @RequestParam(required = false) BigDecimal minAmount,
+            @RequestParam(required = false) BigDecimal maxAmount) {
+
+        // 🔴 KIM? - tokeniden. Sýr ötkende "?userId=999" ýazylyp
+        //    goýlanda hem biz ÖŇKI kollonuwçynyň taryhyny görýäris.
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+
+        TransactionFilter filter =
+                new TransactionFilter(page, size, type, from, to, minAmount, maxAmount);
+
+        return transactionService.getMyTransactions(currentUserId, filter);
     }
 }
