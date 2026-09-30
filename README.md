@@ -33,6 +33,10 @@ Transfer (iki esap arasynda), Transaction History (pagination + filter), we
 🔠 **PHASE 10A**: ähli REST endpointler **OpenAPI 3** bilen documented
 (Swagger UI). Täze biznes-funksiýa **ýok** — diňe dokumentasiýa.
 
+💾 **PHASE 10B**: PostgreSQL **backup / restore** we recovery
+(deployment gollanmasy — aşakda). Täze biznes-funksiýa we täze
+schema **ýok** — diňe işläp durmagyň ynamlylygy.
+
 Азыр ýok: Frontend.
 
 🔴 **PHASE 8 read-only**: admin üçin `GET` endpointler bar
@@ -892,7 +896,152 @@ src/main/resources/
 | 8 | Admin API + Role-Based Access Control | ✅ |
 | 9 | Integration Hardening & Reliability | ✅ |
 | 10A | API Documentation + OpenAPI (Swagger UI) | ✅ |
+| 10B | Database Backup, Recovery & Operational Reliability | ✅ |
 | 10 | Frontend | ⬜ |
+
+---
+
+# Database Backup and Restore
+
+PHASE 10B. Täze biznes-funksiýa we täze migration **ýok** — bu faza
+diňe «маалымат ушул базада бармы?» soragyna jogap berýär.
+
+## 🔑 Önünde: backend-iň ýoly
+
+```bash
+docker compose up -d      # PostgreSQL 16 + «minibank» bazasy
+./mvnw spring-boot:run    # backend → http://localhost:8080
+```
+
+## Backup
+
+```bash
+./scripts/backup-db.sh
+```
+
+Çyktysy: `backups/minibank_YYYYmmdd_HHMMSS.dump`
+
+Aty özüňiz bilen bellenmek üçin:
+
+```bash
+./scripts/backup-db.sh before_upgrade.dump
+```
+
+**Format: `.dump` (`pg_dump -Fc`)** — kompressirlenen, parallel
+`pg_restore` bolýan, bitewi atlandyrylýan format.
+
+## Restore
+
+```bash
+./scripts/restore-db.sh <backup-file>
+```
+
+Bu — **DRY-RUN**: diňe näme boljakdyny görkezýär, **эч нерсе
+ýok etmeýär**.
+
+Chyreally ýerine çalyşmak üçin:
+
+```bash
+./scripts/restore-db.sh backups/minibank_20260930_140639.dump --yes-please
+```
+
+### ⚠️ BU BUJURUK MAZLMATY ÖÇÜRÄR
+
+| Ýagdaý | Netije |
+|---|---|
+| `--yes-please` **ýok** | **Эч нерсе өзгэрмеýär** (dry-run) |
+| `--yes-please` **bar** | `users`, `accounts`, `transactions`, `flyway_schema_history` **өчürilýär** we backup'tan **gaýtadan ýazylýar** |
+
+> 🧡 **Bu ýer giňişleýin gollanma.** Bu lokal okuw maksatly
+> Mini Bank. Eger bu ýerde hakyky/öndürüş bazasy bolalsa,
+> indiki hatda çalyşmaň.
+
+## Restart
+
+```bash
+docker compose restart postgres
+docker compose ps          # «healthy» bolmagyny garaşyň
+```
+
+**Netije:** maýat namalar **`postgres_data` atly volume**-da
+saklanýar, şonuň üçin restart hiç näme ýitirmeýär.
+
+> ⚠️ `docker compose down` — konteýneri öçürýär, maýlumat galýar.
+> `docker compose down -v` — hem konteýneri, **hem maýlumaty
+> ýok edýär**. Iň ýygy «barmak ýitirim» sebäbi şu.
+
+## Verify
+
+### 1) Maýlumat barymy
+
+```bash
+docker exec -it minibank-postgres \
+  psql -U minibank -d minibank \
+  -c "select count(*) from users;"
+```
+
+### 2) Backup bitewmi? (içindäki objektleri görkezýär)
+
+```bash
+docker cp backups/<fayl>.dump minibank-postgres:/tmp/v.dump
+docker exec minibank-postgres pg_restore --list /tmp/v.dump
+docker exec minibank-postgres rm -f /tmp/v.dump
+```
+
+Bolmalı tablisalar: `users`, `accounts`, `transactions`,
+`flyway_schema_history` (+ `account_number_seq` sequence).
+
+### 3) Flyway migration ýagdaýy
+
+```bash
+docker exec minibank-postgres psql -U minibank -d minibank \
+  -c "select version, description, success
+      from flyway_schema_history order by installed_rank;"
+```
+
+Ähli 5 sany `success = t` bolmaly.
+
+### 4) Çekemeler (constraints) ýagdaýy
+
+```bash
+docker exec minibank-postgres psql -U minibank -d minibank \
+  -c "select conrelid::regclass, conname, contype
+      from pg_constraint where connamespace='public'::regnamespace
+      order by 1;"
+```
+
+15 sany çeke bolmaly: 4 PRIMARY KEY, 2 UNIQUE, 2 FOREIGN KEY,
+6 CHECK + Flyway PK.
+
+### 5) API işläýärmi?
+
+```bash
+./mvnw spring-boot:run
+```
+
+Logda görkezilmelidir:
+
+```text
+Successfully validated 5 migrations
+Schema "public" is up to date. No migration necessary.
+```
+
+Soňra token bilen:
+
+```bash
+curl localhost:8080/api/users/me   -H "Authorization: Bearer <TOKEN>"
+curl localhost:8080/api/accounts/me -H "Authorization: Bearer <TOKEN>"
+```
+
+## 🔐 Howpsuzlyk
+
+| Düzgün | Nähili |
+|---|---|
+| Parol scriptde **ýok** | `.env`-ден gelýär; konteýneriň **içki soketi** `trust` — parol hiç haçan buýrukça geçmeýär |
+| `.env` Git'e **gitmeýär** | `.gitignore` |
+| Backup Git'e **gitmeýär** | `.gitignore`: `backups/` |
+| ❌ `*.sql` globally **ýok** | Flyway migration faýllary `*.sql` — olar Git'de galmaly! |
+| Production credentials **ýok** | Bu ýörite lokal okuw gollanmasy |
 
 ---
 
@@ -979,6 +1128,64 @@ gözden geçirip, barlamak bolýar.
 
 `OpenApiDocumentationTest` şulary barlaýar: `/v3/api-docs` → 200,
 boş däl, `Mini Bank API` title, `bearerAuth` (http/bearer/JWT),
+---
+
+# PHASE 10B — Database Backup, Recovery & Operational Reliability
+
+Jany biznes-funksiýa **ÝOK**, jany schema **ÝOK** (V6 ýok).
+Bu faza diňe «маалымат ýitirmese we gaýt alynsa» soragyna
+subut goşýar.
+
+## Näme goşuldy
+
+| Näme | Ýer |
+|---|---|
+| `backup-db.sh` | `scripts/backup-db.sh` |
+| `restore-db.sh` | `scripts/restore-db.sh` |
+| 5 recovery test | `integration/DatabaseBackupRestoreTest.java` |
+| `backups/` ignore | `.gitignore` |
+
+## 🔴 Restore — 3 gatly goraýyş
+
+1. `--yes-please` **ýok** → diňe görkezýär, **эч нерсе өзгэрмеýär**
+2. İşläp başlamazdan **öň** açyk WARNING çykýar
+3. Interaktiw bolsa `yes` diýip ýazdyrmaly
+
+## 🧡 Tapylan we düzedilen ýalňyş
+
+🔴 **Restore'ň barlagy şertli ýalňyşlyk döretdi.** `pg_restore
+--list` каждары атдан soň ээсиň ady gelýär:
+`TABLE public users    minibank`. Ilki ýazylan ýagdaýda biz
+`...users$` diýip barladyk — bu **hiç haçan** gabat gelmeýär,
+şonuň üçin chynlygy doly backup «tablisa ýok» diýip hasaplanýardy.
+
+Düzeltme: `TABLE( DATA)? public <at>` — şema **we** maglumat
+hem barlanýar.
+
+## Testler
+
+**328 toplum** (323 bar + 5 täze). 5 täze test
+`PHASE10B_DOCKER_TESTS=true` berilende işleýär, ýoksa howpsuzça
+skip bolýar.
+
+| Test | Näme barlaýar |
+|---|---|
+| 1 | backup faýl döredýär, 0 däl, `backups/` içinde |
+| 2 | `pg_restore --list` ony **okaýar** (4 tablisa) |
+| 3 | **restore «--yes-please» bolmasa bir setir hem üýtgemeýär** |
+| 4 | ýok/boş/buzulan faýl → **non-zero** |
+| 5 | ýazylmaýan maksat → **non-zero** |
+
+> 🧡 3-nji test **mutatsiýa bilen barlanady**: howpsuzlyk
+> ýapagy aýrylanda test hakykata **DÜŞÝÄR** (ýeňil barlag däl).
+
+## Subutlar
+
+- Restart → snapshot **düýb-eýt görnüşde şaýat**
+- Wipe → restore → snapshot **düýb-eýt görnüşde şaýat**
+- 15 çeke, 12 «ýazmak» synagy — hemmesi **blockingdi**
+- Flyway: `Successfully validated 5 migrations`
+
 14 endpointiň hemmesi, 13 DTO shemasy, `ApiError` we `PageResponse`
 atlandyryşlarynyň dogrylygy, walidasiýanyň görünmegi we ýalňyş
 ýazylan şemalar — şeýle hem «dokumentasiýa açyk, API ýapyk».
