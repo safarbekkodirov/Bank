@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * АКЧА ОПЕРАЦИЯСЫНЫН СУРООСУ — deposit жана withdraw экөөсүнө бир.
  *
@@ -31,7 +33,20 @@ import jakarta.validation.constraints.Size;
  *
  * @param amount      — канча акча. Мисалы 500.0000. Чоңдук жана каттуулук — экөө тексирилет
  * @param description — кошумча маалымат. КЫЙИККИ (optional) → null болушу мүмкүн
+ *
+ * 📄 PHASE 10A: тек ДОКУМЕНТАЦИЯ (@Schema). @DecimalMin/@Digits жаңы
+ *    эмес — алар мурдадан бар эле (@Valid аркылуу иштеп жатат).
  */
+@Schema(
+        description = "Акча операциясынын суроосу — deposit жана "
+                + "withdraw экөөсүнө БИР. Эсеп ИДСИ ЖОК: эсеп "
+                + "токенден алынат.",
+        example = """
+                {
+                  "amount": 1000,
+                  "description": "Initial deposit"
+                }"""
+)
 public record MoneyOperationRequest(
 
         @NotNull(message = "Amount must not be null")
@@ -39,9 +54,22 @@ public record MoneyOperationRequest(
                 message = "Amount must be greater than 0")
         @Digits(integer = 15, fraction = 4,
                 message = "Amount must have at most 4 decimal places")
+        @Schema(description = "Операциянын суммасы. Үч шарт: "
+                + "1) ЖОК болбош керек; 2) 0ден ЧОҢ болууга тийиш "
+                + "(0, -100 → 400); 3) ондук бөлүгү 4төн АШПАШЫ "
+                + "керек (100.12345 → 400). Ички бүтүш саны 15ке "
+                + "чейин. Сумма эсепте BigDecimal — эсептөө анык "
+                + "(double эмес).",
+                example = "1000", minimum = "0.0001",
+                exclusiveMinimum = true)
         BigDecimal amount,
 
         @Size(max = 500, message = "Description must not exceed 500 characters")
+        @Schema(description = "Кошумча маалымат (максат, аныктайтып "
+                + "жазылган болсо). КЫЙИККИ: жок болсо да болот. "
+                + "Максимум 500 белги (DB VARCHAR(500)). Бош "
+                + "болгондо журналда NULL сакталат.",
+                example = "Initial deposit", maxLength = 500)
         String description
 ) {
 

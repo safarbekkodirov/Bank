@@ -10,9 +10,18 @@ import org.springframework.web.bind.annotation.RestController;
 import com.minibank.dto.auth.AuthResponse;
 import com.minibank.dto.auth.LoginRequest;
 import com.minibank.dto.auth.RegisterRequest;
+import com.minibank.dto.common.ApiError;
 import com.minibank.dto.user.UserResponse;
 import com.minibank.service.AuthService;
 import com.minibank.service.UserService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import jakarta.validation.Valid;
 
@@ -38,6 +47,9 @@ import jakarta.validation.Valid;
  */
 @RestController
 @RequestMapping("/api/auth")
+@SecurityRequirements   // 🟡 Бүт AuthController ТОКЕНСИЗ иштейт
+@Tag(name = "Auth", description = "Катталуу жана логин. Бул эндпоинттер "
+        + "АЧЫК (permitAll) — токен керек ЭМЕС, алар токен БЕРЭТ.")
 public class AuthController {
 
     private final UserService userService;
@@ -58,6 +70,31 @@ public class AuthController {
      *                (Jackson автоматтык жасайт).
      */
     @PostMapping("/register")
+    @Operation(
+            summary = "Катталуу",
+            description = """
+                    Жаңы колдонуучу жаратады. Эсеп АЧЫЛБАЙТ — аны
+                    үчүнчү кадамда `POST /api/accounts` керек.
+
+                    🛡️ Роль СУРОГДО КАБЫЛ КЫЛЫНБАЙТ: `{"role": "ADMIN"}`
+                    жазсан да, колдонуучу `USER` болуп кала берет (тест 10).
+
+                    🔐 Жоопта пароль ЖОК — BCrypt хэш сакталат, эч качан
+                    кайтпайт.""")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Колдонуучу жаратылды",
+                    content = @Content(schema = @Schema(implementation = UserResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Валидация өтпөдү "
+                    + "(fullName/email/password бош, email форматсыз, "
+                    + "пароль 8ден аз) же JSON бузулган",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "409", description = "Бу email БУГУНАН "
+                    + "кийин катталган",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "415", description = "Content-Type "
+                    + "application/json ЭМЕС",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         UserResponse response = userService.register(request);
         // 201 Created = "Жаңы нерсе жаратылды" (анын дареси бар).
@@ -76,6 +113,35 @@ public class AuthController {
      *    аны ошондой жазып калган.
      */
     @PostMapping("/login")
+    @Operation(
+            summary = "Логин",
+            description = """
+                    Email + пароль → JWT токен.
+
+                    🧡 `accessToken` маанисин `Authorization: Bearer <token>`
+                    header'инде жиберип, бардык корголгон endpoint'терди
+                    иштесе болот. Swagger UI'да: «Authorize» → ушул токен.
+
+                    🔴 Токен мөөрүтү 15 минут (900 секунд). Анан токен
+                    ЖАРАКСЫЗ болот жана КАЙТА логин керек (refresh токени
+                    ЖОК — өзгөртүүлбөйт).
+
+                    🔴 Email же пароль туура эмес болсо — 401 БИРдей
+                    билдирүү менен. «Бул email жок» деп айтсак, чыгаруучу
+                    эсептеринин бар экенин таап алар эле (user enumeration).""")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Токен алынды",
+                    content = @Content(schema = @Schema(implementation = AuthResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Валидация өтпөдү "
+                    + "(email бош/форматсыз, пароль бош) же JSON бузулган",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "401", description = "Email же пароль "
+                    + "туура эмес",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "415", description = "Content-Type "
+                    + "application/json ЭМЕС",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(response);

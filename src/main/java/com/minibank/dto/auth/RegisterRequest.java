@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * КАТТАЛУУ ЖӨНҮМӨ — колдонмонунон келген JSON.
  *
@@ -25,20 +27,53 @@ import jakarta.validation.constraints.Size;
  * @param fullName — көрүүнүш үчүн ат (150 белгиге чейин, DB кантип)
  * @param email    — кириш үчүн email (түзүлгөн түзүлүш, 255 белгиге чейин)
  * @param password — ачык пароль (8..72 белги: 8 — кооптуулук, 72 — BCrypt чеги)
+ *
+ * 📄 PHASE 10A: @Schema анотациялары ТОЛУК ДОКУМЕНТАЦИЯ ҮЧҮН.
+ *    Алар эч кандай валидация КОШПАЙТ — @NotBlank/@Email/@Size
+ *    чыныгы текшерүүлөр өзгөрүшөр жок. @Schema болсо Swagger UI'да
+ *    «эмне күтүлөт» деген маалыматты көрсөтөт.
  */
+@Schema(
+        description = "Катталуу суроосу. Чыныгы эсеп күйгөндө кийинки "
+                + "кадамдар керек: эсеп ачуу (POST /api/accounts) жана "
+                + "акча салуу (POST /api/accounts/me/deposit).",
+        example = """
+                {
+                  "fullName": "Test User",
+                  "email": "test@example.com",
+                  "password": "Password123"
+                }"""
+)
 public record RegisterRequest(
 
         @NotBlank(message = "Full name must not be blank")
         @Size(max = 150, message = "Full name must not exceed 150 characters")
+        @Schema(description = "Колдонуучунун толук аты. Бош бөлүк жана "
+                + "мурун/артындагы боштуктар тазаланат. "
+                + "Максимум 150 белги.",
+                example = "Test User", maxLength = 150)
         String fullName,
 
         @NotBlank(message = "Email must not be blank")
         @Email(message = "Email must be a valid address, for example name@example.com")
         @Size(max = 255, message = "Email must not exceed 255 characters")
+        @Schema(description = "Логин үчүн колдонулуучу email. Кириш "
+                + "талаасы (regex) текшерет; мурун/артындагы боштуктар "
+                + "тазаланып, КИЧИ тамгага айландырылат "
+                + "(Test@Example.com → test@example.com). "
+                + "Максимум 255 белги.",
+                example = "test@example.com",
+                format = "email", maxLength = 255)
         String email,
 
         @NotBlank(message = "Password must not be blank")
         @Size(min = 8, max = 72, message = "Password must be between 8 and 72 characters")
+        @Schema(description = "АЧЫК пароль, 8..72 белги. 8 — кооптуулук "
+                + "үчүн минимум, 72 — BCrypt алгоритминин чеги. "
+                + "Пароль ХЭШ түрүндө сакталып, эч качан API жообунда "
+                + "кайтпайт. ТАЗАЛАНБАЙТ: боштук — парольдун бөлүмү.",
+                example = "Password123", minLength = 8, maxLength = 72,
+                format = "password")
         String password
 ) {
 

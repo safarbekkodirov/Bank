@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.minibank.dto.account.AccountResponse;
 import com.minibank.dto.transaction.MoneyOperationRequest;
 import com.minibank.dto.transaction.MoneyOperationResponse;
+import com.minibank.dto.common.ApiError;
 import com.minibank.dto.common.PageResponse;
 import com.minibank.dto.transaction.TransactionFilter;
 import com.minibank.dto.transaction.TransactionResponse;
@@ -25,6 +26,15 @@ import com.minibank.service.AccountService;
 import com.minibank.service.MoneyService;
 import com.minibank.service.TransactionService;
 import com.minibank.service.TransferService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import jakarta.validation.Valid;
 
@@ -57,6 +67,11 @@ import org.springframework.format.annotation.DateTimeFormat;
  */
 @RestController
 @RequestMapping("/api/accounts")
+@SecurityRequirement(name = "bearerAuth")
+@Tag(name = "Account", description = "Банк эсеби, акча салуу/чыгаруу, "
+        + "эсептен эсепке которуу жана операция тарыхы. 🛡️ БААРЫ "
+        + "«/me» аркылуу иштейт: эсеп IDси СЫРТТАН КАБЫЛ АЛЫНБАЙТ, "
+        + "токенден алынат — ошондуктан IDOR коркучу жок.")
 public class AccountController {
 
     private final AccountService accountService;
@@ -85,6 +100,34 @@ public class AccountController {
      *    телефондогу жазууларда көрсөтөм.
      */
     @PostMapping
+    @Operation(
+            summary = "Эсеп ачуу",
+            description = """
+                    Токендеги колдонуучуга жаңы банк эсебин ачат.
+
+                    🧡 Request body ТАЛАП КЫЛЫНБАЙТ — эсептин маалыматы
+                    колдонуучуга ЭМЕС, ТОКЕНге жараша түзүлөт. Валюта эр
+                    жерде «RUB», баланс «0.0000».
+
+                    🔴 Бизнес-эреже: бир колдонуучуга БИР эсеп. Эгер
+                    эсеп мурунтан болсо → 409.
+
+                    🛡️ Телото күйсүн `{"balance": 1000000}` — ЖОК.
+                    Сервер мындай талааны көрбөйт, чын эсеп токенге
+                    жараша болот (тест 11).""")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Эсеп ачылды",
+                    content = @Content(schema = @Schema(implementation = AccountResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Токен жок же "
+                    + "жарасyz",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "404", description = "Токендеги "
+                    + "колдонуучу базада жок",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "409", description = "Бу колдонуучунун "
+                    + "эсепи МУРУНТАН БАР",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
     public ResponseEntity<AccountResponse> createAccount() {
         // ID токенден, колдонуучу эмес, чалбайбыз
         Long currentUserId = SecurityUtils.getCurrentUserId();
@@ -100,6 +143,24 @@ public class AccountController {
      * 401 — токенсиз
      */
     @GetMapping("/me")
+    @Operation(
+            summary = "Менин эсебим",
+            description = """
+                    Токендеги колдонуучунун эсебин жана УЧУРДАГЫ
+                    балансын кайтарат.
+
+                    🔴 Эгер эсеп ачыла элек болсо → 404 (маалымат
+                    жок — бул КАТА эмес, абал).""")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Эсеп табылды",
+                    content = @Content(schema = @Schema(implementation = AccountResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Токен жок же "
+                    + "жарасyz",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "404", description = "Бу колдонуучунун "
+                    + "эсеби ЖОК (ачуу керек)",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
     public AccountResponse getMyAccount() {
         Long currentUserId = SecurityUtils.getCurrentUserId();
         return accountService.getMyAccount(currentUserId);
@@ -129,6 +190,39 @@ public class AccountController {
      *      Биз DTO (MoneyOperationResponse) кайтарабыз, Entity ЭМЕС.
      */
     @PostMapping("/me/deposit")
+    @Operation(
+            summary = "Акча салуу (deposit)",
+            description = """
+                    Менин эсебиме акча САЛЫНАДЫ (баланс өсөт).
+
+                    🧡 Суроо: `{"amount": 1000, "description": "..."}`.
+                    Эсеп IDси СУРООДА ЖОК — эсеп токенден алынат.
+                    `?userId=` же `{"accountId":}` жазсан да, башка эсепке
+                    өтө албайт (тест 12, 13).
+
+                    🧡 Сумма: жок болбош керек, 0ден ЧОҢ, ондук бөлүгү
+                    4төн ашпаш керек. Башкача болсо → 400.
+
+                    🧡 200 (201 ЭМЕС): эсеп ӨЗГӨРДҮ, жаңы ресурс
+                    ЖАРАЛБАГАН. 201 болсо — «эсеп ачтың» үчүн
+                    (POST /api/accounts).""")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Акча салынды, "
+                    + "жаңы баланс кайтарылды",
+                    content = @Content(schema = @Schema(implementation = MoneyOperationResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Сумма жок/0/"
+                    + "терс/4төн көп ондук бөлүктү",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "401", description = "Токен жок же "
+                    + "жарасyz",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "404", description = "Бу колдонуучунун "
+                    + "эсеби ЖОК",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "415", description = "Content-Type "
+                    + "application/json ЭМЕС",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
     public MoneyOperationResponse deposit(@Valid @RequestBody MoneyOperationRequest request) {
         Long currentUserId = SecurityUtils.getCurrentUserId();
         return moneyService.deposit(
@@ -147,6 +241,41 @@ public class AccountController {
      *    404 — эсеп жок.
      */
     @PostMapping("/me/withdraw")
+    @Operation(
+            summary = "Акча чыгаруу (withdraw)",
+            description = """
+                    Менин эсебимден акча ЧЫГАРЫЛАДЫ (баланс азаят).
+
+                    🔴 409 CONFLICT — «калган акча жетишпейт». Мисал:
+                    баланс 650, суралган 1000 → 409 жана баланс
+                    ӨЗГӨРМӨЙТ.
+
+                    🧡 БАЛАНС ТЕРС БОЛУП КАЛБАЙТ: Service'те текшерүү +
+                    маалымат базасында CHECK (balance >= 0). Конкурент
+                    чыгарууларда да (тест 30 параллель withdraw).
+
+                    🛡️ Жоопта `amount` ТЕГИН (+) көрүнөт: чыгарулган
+                    100 деп жазылат, минус белгиси жок.""")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Акча чыгарылды, "
+                    + "жаңы баланс кайтарылды",
+                    content = @Content(schema = @Schema(implementation = MoneyOperationResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Сумма жок/0/"
+                    + "терс/4төн көп ондук бөлүктү",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "401", description = "Токен жок же "
+                    + "жарасyz",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "404", description = "Бу колдонуучунун "
+                    + "эсеби ЖОК",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "409", description = "Эсептеги "
+                    + "акча ЖЕТИШПЕЙТ (баланс өзгөрбөйт)",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "415", description = "Content-Type "
+                    + "application/json ЭМЕС",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
     public MoneyOperationResponse withdraw(@Valid @RequestBody MoneyOperationRequest request) {
         Long currentUserId = SecurityUtils.getCurrentUserId();
         return moneyService.withdraw(
@@ -177,6 +306,46 @@ public class AccountController {
      * 🛡️ 401 — токенсиз.
      */
     @PostMapping("/me/transfer")
+    @Operation(
+            summary = "Акча которуу (transfer)",
+            description = """
+                    Биздин эсебимден БАШКА эсепке акча которуу.
+
+                    🧡 «МЕН КИММИН?» СУРООСУ:
+                      • КАЙНАК (from) — ТОКЕНДЕН. Эч качан сүрөттөн
+                        ЭМЕС. `?accountId=` же `{"fromAccountId":}` жазуу
+                        мүмкүн ЭМЕС — алар кабыл алынбайт.
+                      • КЕЙИНКИ (to) — `toAccountNumber` менен (18 цифра).
+                        Бул АЧЫК маалымат: «ушул эсепке котору» — ушул
+                        чыныгы которуунун мааниси.
+
+                    🧡 200 (201 ЭМЕС): жаңы ресурс ЖАРАЛБАГАН, акча
+                    көчтү.
+
+                    🔴 409 — өз эсебиңе өзүң которууң («А → А») же
+                    акча жетишпейт.
+                    🔴 404 — кейинки эсеп жок, же өз эсебиң жок.""")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Акча которулду, "
+                    + "эки эсептин жаңы абалы кайтарылды",
+                    content = @Content(schema = @Schema(implementation = TransferResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Сумма же "
+                    + "эсеп номуру туура эмес (номур так 18 цифра "
+                    + "болушу керек)",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "401", description = "Токен жок же "
+                    + "жарасyz",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "404", description = "Кейинки эсеп же "
+                    + "колдонуучунун өз эсеби ЖОК",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "409", description = "Акча жетишпейт "
+                    + "же өз эсебиңе өзүң которуң",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "415", description = "Content-Type "
+                    + "application/json ЭМЕС",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
     public TransferResponse transfer(@Valid @RequestBody TransferRequest request) {
         Long currentUserId = SecurityUtils.getCurrentUserId();
         return transferService.transfer(currentUserId, request);
@@ -211,13 +380,84 @@ public class AccountController {
      *     tertip DETERMINISTIK (belgileri Service-de).
      */
     @GetMapping("/me/transactions")
+    @Operation(
+            summary = "Менин операцияларым",
+            description = """
+                    Токендеги колдонуучунун операция тарыхы — бет
+                    боюнча, фильтр менен.
+
+                    🛡️ `?userId=` жазып да, башка колдонуучунун тарыхын
+                    АЛА АЛБАЙСЫН: «мен киммин?» суроосу АЛДА ТОКЕНДЕН
+                    чечилет (тест 13).
+
+                    🟡 Ирет: createdAt DESC, id DESC (эң жаңа биринчи) —
+                    ТАТИМДҮҮ (бир убакытта эки жазуу болсо да, ирет
+                    ар дайым бирдей).
+
+                    🔴 ЖООП БОШ БОЛСО ДА 200: `content: []`,
+                    `totalElements: 0`. Бул ката ЭМЕС.""")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Бет "
+                    + "кайтарылды (бос бет болсо да 200)"),
+            @ApiResponse(responseCode = "400", description = "Фильтр "
+                    + "параметри туура эмес: page<0, size<1, size>100, "
+                    + "type бейтарап, from>to, minAmount>maxAmount",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "401", description = "Токен жок же "
+                    + "жарасyz",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            @ApiResponse(responseCode = "404", description = "Бу колдонуучунун "
+                    + "эсеби ЖОК",
+                    content = @Content(schema = @Schema(implementation = ApiError.class)))
+    })
     public PageResponse<TransactionResponse> getMyTransactions(
+            @Parameter(description = """
+                    Беттин номуру, 0ден башталат. Мисал: ?page=2
+                    Бош болсо → 0. page < 0 болсо → 400.""",
+                    example = "0", schema = @Schema(type = "integer",
+                            minimum = "0", defaultValue = "0"))
             @RequestParam(required = false) Integer page,
+            @Parameter(description = """
+                    Бир беттеги жазуулардын саны. 1..100.
+                    Бош болсо → 20. 1den аз же 100ден көп болсо → 400
+                    (DOS коргоо).""",
+                    example = "20", schema = @Schema(type = "integer",
+                            minimum = "1", maximum = "100",
+                            defaultValue = "20"))
             @RequestParam(required = false) Integer size,
+            @Parameter(description = """
+                    Операция түрү. Кийинки 4түнүн бири: DEPOSIT,
+                    WITHDRAW, TRANSFER_IN, TRANSFER_OUT.
+                    🧡 ЧОҢ тамга МАЖБУРИЙ (case-sensitive): «deposit»
+                    → 400. Бош болсо → фильтр ЖОК (баары).""",
+                    example = "DEPOSIT",
+                    schema = @Schema(type = "string",
+                            allowableValues = {"DEPOSIT", "WITHDRAW",
+                                    "TRANSFER_IN", "TRANSFER_OUT"}))
             @RequestParam(required = false) String type,
+            @Parameter(description = """
+                    Башлангы убакыт, ISO-8601 (UTC, «Z» менен).
+                    Мисал: ?from=2026-09-01T00:00:00Z
+                    Киргизилүү (баш тарабы кошо). Формат башка болсо →
+                    400.""",
+                    example = "2026-09-01T00:00:00Z",
+                    schema = @Schema(type = "string", format = "date-time"))
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @Parameter(description = """
+                    Аякталган убакыт, ISO-8601 (UTC, «Z» менен).
+                    Мисал: ?to=2026-09-30T23:59:59Z
+                    Киргизилүү. from > to болсо → 400.""",
+                    example = "2026-09-30T23:59:59Z",
+                    schema = @Schema(type = "string", format = "date-time"))
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+            @Parameter(description = """
+                    Эң аз сумма, киргизилүү. Мисал: ?minAmount=100
+                    minAmount > maxAmount болсо → 400.""",
+                    example = "100")
             @RequestParam(required = false) BigDecimal minAmount,
+            @Parameter(description = """
+                    Эң көп сумма, киргизилүү. Мисал: ?maxAmount=1000""",
+                    example = "1000")
             @RequestParam(required = false) BigDecimal maxAmount) {
 
         // 🔴 KIM? - tokeniden. Sýr ötkende "?userId=999" ýazylyp

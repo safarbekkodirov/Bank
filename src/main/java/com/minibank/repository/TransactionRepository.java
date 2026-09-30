@@ -14,28 +14,34 @@ import org.springframework.stereotype.Repository;
 import com.minibank.entity.Transaction;
 
 /**
- * Transaction Entity menen transactions tablitsasyny baglanshyrýan klas.
+ * Transaction Entity менен transactions таблицасын байланыштырган класс.
  *
- * 🧠 Bu repositorij "JURNAL" - ony okuga gana. Biz bu ýerde esabyň
- *     balansyny OCHURTMAÝARYS (balans = accounts.balance). Žurnal -
- *     görkezýän, esap - hakyky.
+ * 🧠 Бул репозиторий «ЖУРНАЛ» - аны окуу үчүн гана. Биз бул жерде
+ *     эсептин балансын ӨЧҮРМӨЙҮЗ (баланс = accounts.balance,
+ *     эсептин өзүндө). Журнал - көрсөткөн, эсеп - чыныгы.
  *
- * 🟢 PHASE 7: transaction history üçin JpaSpecificationExecutor.
+ * 🟡 PHASE 5те биз «тарых» эндпоинтин ЖАЗБАЙБЫЗ (тапшырманын
+ *     чеги) - бирок репозиторий методун АЛДЫНАН даярдап коёбуз.
+ *     Кийин (PHASE 7+) бул жерде көрүнүш керек болгондо,
+ *     Controller жазып, ушул методду чакырса болот - логика
+ *     кайта жазылбайт.
  *
- * 🧠 EMNE Specification, EMNE DÜZGÜNLI METOD DÄL?
- *     Düzgünli metod (findByAccountId...) diňe BIR sorag üçin gowy.
- *     Emma biz 4 sany ÄTBIEK filteri soraýarys:
- *         type, from/to (sagat), minAmount/maxAmount.
- *     Her birini goşsaýyn -> 2^4 = 16 metod. Bu ÝALŇYŞ: 16 metoduň
- *     her biri öz-özüňe barlanmagy gerek, we 16-njy ýalňyş ýüze
- *     çykanda ol ýuwulýar. Specification bolsa BIR funksiýa: her
- *     köp sanaw hökmany: "şu şerti goş, şu şerti goşma".
+ * 🟢 PHASE 7: transaction history үчүн JpaSpecificationExecutor.
  *
- * 🔴 EMNE ÝOGSAÝARYS? Arbitrary sort. Klient sort=passwordHash diýip
- *     aňsat bilmerdi - Pageable BIZ KURÝARYS, klient däl.
+ * 🧠 ЭМНЕ Specification, ЭМЕС ДҮЗГҮНДҮ МЕТОД?
+ *     Дүзгүндү метод (findByAccountId...) гана БИР сорог үчүн жакшы.
+ *     Бирок биз 4 сан ÄЛЧИЭК фильтр соройбуз:
+ *         type, from/to (убакыт), minAmount/maxAmount.
+ *     Ар бирин кошсо - 2^4 = 16 метод. Бул ЖАЛГАН: 16 методун
+ *     ар бири өз-өзүнче сыналышы керек, жана 16-инчи ката
+ *     чыкканда ал тазаланат. Specification болсо БИР функция:
+ *     «ушул шартты кош, ушул шартты кошпо».
  *
- * 🟢 DB PAGINATION: Page + Pageable -> LIMIT/OFFSET bazada.
- *     Ýazgylaryň hemmesi Java memory-e çekilmeýär (task 27).
+ * 🔴 ЭМНЕ ЖОК КЫЛБАБЫЗ? Эркин сорт. Клиент sort=passwordHash
+ *     деп аңсай алмайт - Pageable БИЗ КУРАБЫЗ, климент эмес.
+ *
+ * 🟢 DB БЕТЛЕШҮҮ: Page + Pageable -> LIMIT/OFFSET базада.
+ *     Жазуулардын баары Java эстуне тартылбайт (task 27).
  */
 @Repository
 public interface TransactionRepository
@@ -43,36 +49,37 @@ public interface TransactionRepository
                 JpaSpecificationExecutor<Transaction> {
 
     /**
-     * Esabyň operasiýalary, EŇ ŽAŇY SY BASHA (tushendirme "biz görkezýän").
+     * Эсептин операциялары, ЕҢ ЖАҢЫСЫ БАШТА (түшүндүрмэ «биз көрсөткөн»).
      *
-     * 🧡 PHASE 5te bu metod taýýar goýulýardy. Indi biz ony
-     *    tarih üçin ulanýarys; emma PHASE 7ninyň esasy ýoly -
-     *    findAll(Specification, Pageable) aşakda.
+     * 🧡 PHASE 5те бул метод таяр коюлган. Азыр биз аны
+     *    тарых үчүн колдонобул; бирок PHASE 7нин негизги жолу -
+     *    төмөнкү findAll(Specification, Pageable).
      *
-     * 🧡 Индексти KEREK EMES jazyw kerek däl: V1de
-     *    ix_transactions_account_id_created_at şeýle emel indeks
-     *    bar (account_id, created_at DESC).
+     * 🧡 Индексти КЕРЕК ЭМЕС жазуу керек эмес: V1де
+     *    ix_transactions_account_id_created_at мындай эле индекс
+     *    бар (account_id, created_at DESC). Биздин иреттөө
+     *    аны СЫРТТАНДЫ КОЛДОНОТ.
      */
     List<Transaction> findByAccountIdOrderByCreatedAtDesc(Long accountId);
 
     /**
-     * 🧪 TEST KÖMEKÇISI - ýazgynyň created_at wagtyny el bilen goýmak.
+     * 🧪 ТЕСТ КӨМЕКЧИСИ - жазуунун created_at убагын кол менен коюу.
      *
-     * 🟡 NÄME ÜÇIN BU GEREK?
-     *     Transaction entity @CreatedDate (Spring auditing) ulanýar -
-     *     ol wagt YZYLYNDAN gelýär we Java arkaly üýtgedilmeýär.
-     *     Emma "wagt boýunça filter" we "birmeňzeş wagt -> id DESC"
-     *     testleri üçin bize ýazgylaryň WAGTNI saýlamak gerek.
-     *     Şonuň üçin test kömekçisi hökmünde ýörite metod.
+     * 🟡 ЭМНЕ ГЕРЕК?
+     *     Transaction entity @CreatedDate (Spring auditing) колдонот -
+     *     ал убакыт ЫЗЫНДАН келет жана Java аркылуу өзгөртүлбөйт.
+     *     Бирок «убакыт боюнча фильтр» жана «бир убакта -> id DESC»
+     *     тестлери үчүн жазуулардын УБАГЫН өзүбүз тандаш керек.
+     *     Ошондуктан тест көмекчиси катарында атайын метод.
      *
-     * 🔴 ÖNÜMLIK KODYNY GOLLANDYRMAÝARYS:
-     *     Bu metod diňe testiň ýagdaýlary üçin. Öndürimçilikde
-     *     "žurnal ýazgysynyň wagtyny üýtgetmek" = ýazgy üýtgetmek
-     *     = append-only düzgüniniň bozulmagy.
+     * 🔴 ӨНДҮРҮМЧҮЛҮК КОДКО КЫЛЫМЫЗ:
+     *     Бул метод гана тест үчүн. Өндүрүмдө «журнал жазуусунун
+     *     убагын өзгөртүү» = жазууну өзгөртүү = append-only
+     *     эрежесинин бузулушу.
      *
-     * @Modifying + @Transactional -> JPQL UPDATE hökmany (SELECT däl,
-     *     sebäbi biz ýazmaly ýa: JPQL UPDATE diňe @Modifying bilen
-     *     ýerine ýetirilýär).
+     * @Modifying + @Transactional -> JPQL UPDATE милдеттүү (SELECT эмес,
+     *     себеби биз жазуу керек: JPQL UPDATE гана @Modifying менен
+     *     аткарылат).
      */
     @Modifying
     @Query("update Transaction t set t.createdAt = :createdAt where t.id = :id")

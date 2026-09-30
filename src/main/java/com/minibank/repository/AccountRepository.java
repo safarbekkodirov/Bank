@@ -109,6 +109,7 @@ public interface AccountRepository
     Optional<Account> findByUserIdForUpdate(@Param("userId") Long userId);
 
     /**
+    /**
      * 🔒 ЭСЕПТИ ИДСИ БОЮНЧА «КУЛОПКА» МЕНЕН АЛУУ (PESSIMISTIC WRITE).
      *
      * 🧠 БУЛ PHASE 6 (TRANSFER) ҮЧҮН КЕРЕК. Себеби transfer бир
@@ -133,9 +134,9 @@ public interface AccountRepository
     Optional<Account> findByIdForUpdate(@Param("id") Long id);
 
     /**
-     * 🆕 PHASE 6: колдонуучунун эсебинин ИЧКИ НОМУРУ (эсепсyz окуу).
+     * 🆕 PHASE 6: колдонуучунун эсебинин ИЧКИ НОМУРУ (эсепсиз окуу).
      *
-     * 🧠 ЭМНЕ БҮТ ЭСЕПТИ ЭМЕС, АНДА ТЕК ИД'НИ АЛЫШ КЕРЕК?
+     * 🧠 ЭМНЕ БҮТ ЭСЕПТИ ЭМЕС, АНДА ТЕК ID НИ АЛЫШ КЕРЕК?
      *     Себеби — ЭҮЧҮНЧҮ ОКУУ КАТАСЫ (чыныгы «lost update»):
      *         Эгер биз эсепти АЧЫК (кулопкасыз) суроо менен
      *         окууп, аны колдонуучунун «ассоциация кэшине»
@@ -154,61 +155,61 @@ public interface AccountRepository
      *     эсепти ТАЗА кулопка менен (`findByIdForUpdate`) алып,
      *     балансы АР ДАЙЫМ СВЕЖИЙ болот.
      *
-     * 🧠 `@Query` «select a.id» — JPQL'деги «бөгүт» (projection):
-     *     эсептин объектиси ЖАРАТЫЛБАЙТ, Java'га узун сан (Long)
+     * 🧠 `@Query` «select a.id» — JPQL дэги «бөгүт» (projection):
+     *     эсептин объектиси ЖАРАТЫЛБАЙТ, Java га узун сан (Long)
      *     гана кетет. Демек эс а «эски» абал кэшке кирбейт.
      */
     @Query("select a.id from Account a where a.user.id = :userId")
     Optional<Long> findIdByUserId(@Param("userId") Long userId);
 
-    /** 🆕 PHASE 6: эсеп номуру боюнча ИЧКИ НОМУРУ (эсепсyz окуу). */
+    /** 🆕 PHASE 6: эсеп номуру боюнча ИЧКИ НОМУРУ (эсепсиз окуу). */
     @Query("select a.id from Account a where a.accountNumber = :accountNumber")
     Optional<Long> findIdByAccountNumber(@Param("accountNumber") String accountNumber);
 
     /*
      * ==========================================================================
-     *  PHASE 8 - ADMIN: esep list + user maglumaty BIR SORAGDA
+     *  PHASE 8 - ADMIN: эсеп тизбеси + колдонуучу маалыматы БИР СОРОГДА
      * ==========================================================================
      *
-     *  🟡 BU NÄME ÜÇIN? (N+1 meselesi - iň möhüm optimizasiýa)
+     *  🟡 БУ НЭМЕ ҮЧҮН? (N+1 маселеси - эң маанилүү оптимизация)
      *
-     *     Account.user = @ManyToOne(fetch = LAZY). Eger biz ýöne
-     *     findAll(pageable) diýip esepleri alsa, we soňra mapperde
-     *     her bir esep üçin account.getUser().getEmail() çağyrsak,
-     *     Hibernate her birine AYRY sorag iberýär:
+     *     Account.user = @ManyToOne(fetch = LAZY). Эгер биз гана
+     *     findAll(pageable) деп эсептерди алса, жана кийин мапперде
+     *     ар бир эсеп үчүн account.getUser().getEmail() чакырсак,
+     *     Hibernate ар бирине АЙРЫ сорог жөнөтөт:
      *
-     *         SELECT * FROM accounts LIMIT 20     -- 1 sorag
-     *         SELECT * FROM users WHERE id=1      -- 2-nji sorag
-     *         SELECT * FROM users WHERE id=2      -- 3-nji sorag
-     *         ... (20 sany esep = 20 sorag)
+     *         SELECT * FROM accounts LIMIT 20     -- 1 сорог
+     *         SELECT * FROM users WHERE id=1      -- 2-чи сорог
+     *         SELECT * FROM users WHERE id=2      -- 3-чү сорог
+     *         ... (20 эсеп = 20 сорог)
      *
-     *     Bu "N+1" meselesi: 1 + N sorag. 1000 esep bolso -
-     *     1001 sorag! Seňil kompýuterde bir sekuntka çykyp keteýär.
+     *     Бул «N+1» маселеси: 1 + N сорог. 1000 эсеп болсо -
+     *     1001 сорог! Жеңил компьютерде бир секундка чыгып кетет.
      *
-     *  ✅ ÇÖZÜT: JOIN FETCH. "esep bilen birlikde onuň eýesini
-     *     hem BIR soragda getir" diýip ýazýarys:
+     *  ✅ ЧЕЧИМ: JOIN FETCH. «эсеп менен бирге анын ээсин
+     *     да БИР сорогда алып кел» деп жазабыз:
      *
      *         SELECT a.*, u.* FROM accounts a
      *         JOIN users u ON u.id = a.user_id
      *         ORDER BY ... LIMIT 20 OFFSET 0
      *
-     *     Netije: 1 sorag - 20 esep, 20 ulanyjy bilen.
-     *     Bu "LEFT JOIN FETCH" - emma INNER JOIN ýaly üçün ýeterlik.
+     *     Натыйжа: 1 сорог - 20 эсеп, 20 колдонуучу менен.
+     *     Бул «LEFT JOIN FETCH» - бирок INNER JOIN сыяктуу үчүн жетиштүү.
      *
-     *  🧡 Pageable bilen näme üçin duýş gelýär?
-     *     PostgreSQL hasaplamak üçin bäş sany ýazgy erman
-     *     ýygnaýar, soňra olaryň 20-sini kesip alýar - ýagny
-     *     JOIN FETCH barlanan köp ýazgy ýetirýär. Bu 20 ýeňil
-     *     çemeleşme. Yöne üns beriň: eger "pageable" ýok bolsa
-     *     bu duýş ýOK.
+     *  🧡 Pageable менен эмне үчүн эстетүү келет?
+     *     PostgreSQL эсептөө үчүн бардык жазууларды чогултат,
+     *     кийин алардын 20 син кесип алат - демек JOIN FETCH
+     *     текширилген көп жазуу алып келет. Бул 20 жеңил
+     *     эсептөө. Бирок көңүл бургула: эгер «pageable» болбосо,
+     *     бул эстетүү ЖОК.
      *
-     *  @param pageable ADMIN list üçin sahypa + createdAt DESC, id DESC
+     *  @param pageable ADMIN тизме үчүн бет + createdAt DESC, id DESC
      */
     @Query(value = "select a from Account a join fetch a.user",
             countQuery = "select count(a) from Account a")
     Page<Account> findAllWithUser(Pageable pageable);
 
-    /** PHASE 8: aýratyn esep + eýesi (admin /accounts/{id} üçin). */
+    /** PHASE 8: айрым эсеп + ээси (admin /accounts/{id} үчүн). */
     @Query("select a from Account a join fetch a.user where a.id = :id")
     Optional<Account> findByIdWithUser(@Param("id") Long id);
 }

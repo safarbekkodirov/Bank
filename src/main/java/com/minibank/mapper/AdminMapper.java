@@ -4,29 +4,27 @@ import org.springframework.stereotype.Component;
 
 import com.minibank.dto.admin.AdminAccountResponse;
 import com.minibank.dto.admin.AdminUserResponse;
-import com.minibank.dto.account.AccountResponse;
-import com.minibank.dto.user.UserResponse;
 import com.minibank.entity.Account;
 import com.minibank.entity.User;
 
 /**
- * Entity -> DTO gocurucu (ADMIN, PHASE 8).
+ * Entity -> DTO которуучу (ADMIN, PHASE 8).
  *
- * 🧠 EMNE BU AdminMapper BOLEK? Bizde bar bolan
- *     UserMapper va AccountMapper bar (PHASE 3A/4). Olar
- *     kollonuwcu endpoint'leri uchun. Bu - admin uchun, basga
- *     maa lumat toplumy, basga qoida (updatedAt ham bar, user
- *     maglumaty esep bilen birga).
- *     Bir klasa hemme narsany jamlamak - "god object" bolardy.
+ * 🧠 ЭМНЕ БУЛ AdminMapper БОЛУП ЖАТЫР? Бизде бар болган
+ *     UserMapper жана AccountMapper бар (PHASE 3A/4). Алар
+ *     колдонуучу эндпоинттери үчүн. Бул - admin үчүн, башка
+ *     маалымат топтому, башка эреже (updatedAt да бар, эсеп
+ *     менен бирге колдонуучу маалыматы).
+ *     Бир класска баарын жыйноо - «курулман объекти» болчу.
  *
- * 🧡 BU KLASDA BIZNES-LOGIKA YOK - diňe köçürme. Sebäbi:
- *     "eger user null bolsa -> shunda şoňa" diýen ýagdaý
- *     mapperiň däl-de, Service-iň işi.
+ * 🧡 БУЛ КЛАССТА БИЗНЕС-ЛОГИКА ЖОК - гана көчүрмө. Себеби:
+ *     «эгер колдонуучу null болсо -> анда мына» деген жагдай
+ *     маппердин эмес, Service тин иши.
  */
 @Component
 public class AdminMapper {
 
-    /** User -> AdminUserResponse. 🔴 passwordHash KOSULMAÝAR. */
+    /** User -> AdminUserResponse. 🔴 passwordHash КОШУЛБАЙТ. */
     public AdminUserResponse toAdminUserResponse(User user) {
         return new AdminUserResponse(
                 user.getId(),
@@ -41,12 +39,12 @@ public class AdminMapper {
     /**
      * Account -> AdminAccountResponse.
      *
-     * 🟡 BU YERDE user.getEmail() ÇAGYRYLYP BILERY:
-     *     account.getUser() LAZY bolup, servisde tranzaksiýa
-     *     ICHIŇDE okalsa - Hibernate ony shol bir soragdan alady
-     *     (biz AccountRepository'da join fetch ulanyýarys).
-     *     Eger ol ýok bolsa, LazyInitializationException - şonuň
-     *     üçin Service-de ýazmak hökmany, mapper-de däl.
+     * 🟡 БУЛ ЖЕРДЕ user.getEmail() ЧАГЫРЫЛЫП БИЛЕР:
+     *     account.getUser() LAZY, ал эмне Service де
+     *     транзакция ИЧИНДЕ оулганда - Hibernate аны ошол
+     *     бир сорогдан алат (биз AccountRepository де join fetch
+     *     колдонобул). Эгер ал болбосо, LazyInitializationException -
+     *     ошондуктан бул Service де жазуу керек, мапперде эмес.
      */
     public AdminAccountResponse toAdminAccountResponse(Account account) {
         return new AdminAccountResponse(
@@ -60,6 +58,6 @@ public class AdminMapper {
                 account.getCreatedAt(),
                 account.getUpdatedAt()
         );
-        // 🔴 account.getUser().getPasswordHash() -> HECH QAÇAN
+        // 🔴 account.getUser().getPasswordHash() -> ДАЙЫН ЖОК
     }
 }

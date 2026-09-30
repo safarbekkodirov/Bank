@@ -18,16 +18,20 @@ Java Backend, Spring Boot, PostgreSQL, REST API, Authentication жана бан�
 | PostgreSQL | 16 (Docker аркылуу) |
 | Flyway | (Spring Boot менен биге келед) |
 | JUnit 5 | (Spring Boot Test менен биге келед) |
+| springdoc-openapi (Swagger UI) | 2.8.17 |
 
-## Учурдагы абал: **PHASE 9 — Integration Hardening & Reliability**
+## Учурдагы абал: **PHASE 10A — API Documentation & OpenAPI**
 
 Эми иштеп ятат: эсеп ачабыз, акча салýarys, çekýäris, başga esäbe geçirýäris we
-öz operasiýalarymyzyň **taryhyny sahypa sahypa** görýäris. Ähli amallar
+öz operasiýalarymyň **taryhyny sahypa sahypa** görýäris. Ähli amallar
 tokenden yzarlanýar — klient öz eýesini başgasynyň taryhyna geçirip bilmeýär.
 
 Иşleýän funksiýalar: Registration, JWT login, Bank Account, Deposit, Withdraw,
 Transfer (iki esap arasynda), Transaction History (pagination + filter), we
 **Admin API** (ROLE_ADMIN — diňe okaýan administrator paneli).
+
+🔠 **PHASE 10A**: ähli REST endpointler **OpenAPI 3** bilen documented
+(Swagger UI). Täze biznes-funksiýa **ýok** — diňe dokumentasiýa.
 
 Азыр ýok: Frontend.
 
@@ -887,7 +891,101 @@ src/main/resources/
 | 7 | Transaction History (pagination + filter) | ✅ |
 | 8 | Admin API + Role-Based Access Control | ✅ |
 | 9 | Integration Hardening & Reliability | ✅ |
+| 10A | API Documentation + OpenAPI (Swagger UI) | ✅ |
 | 10 | Frontend | ⬜ |
+
+---
+
+# PHASE 10A — API Documentation & OpenAPI
+
+Jany biznes-funksiýa **ÝOK**. Bu faza diňe bar bolan API'yi
+**dokumentasiýa** etmek bilen meşgullan — endpointleri, DTO'lary,
+HTTP kodlary we parametrlere düşündiriş goşuldy.
+
+## Näme goşuldy
+
+| Näme | Faýl / Ýer |
+|---|---|
+| springdoc-openapi-starter-webmvc-ui **2.8.17** | `pom.xml` |
+| `Mini Bank API` / `1.0.0` / süröçbet | `config/OpenApiConfig.java` |
+| JWT Bearer security scheme | `config/OpenApiConfig.java` |
+| `@Schema` — 13 DTO | `dto/**` |
+| `@Operation` + `@ApiResponses` — 14 endpoint | `controller/**` |
+| `@Parameter` — 7 filter parametri | `AccountController`, `AdminController` |
+| `/v3/api-docs` + `/swagger-ui` ачык жол | `config/SecurityConfig.java` |
+| 18 documentation test | `integration/OpenApiDocumentationTest.java` |
+
+## Swagger UI nirede?
+
+```text
+http://localhost:8080/swagger-ui/index.html
+```
+
+OpenAPI JSON (çig süröçbet):
+
+```text
+http://localhost:8080/v3/api-docs
+```
+
+## 🔑 JWT Swagger UI'de nähili ulanylýar?
+
+1. **Authorize** basyň → **bearerAuth** saýlaň → **Authorize**.
+2. Ilki gezek hökmany hökmany ýok: tokeni **Authorize** gutusyna
+   ýazmasaňyz, diňe `register` we `login` işleýär.
+3. **Try it out** basyň → **Execute**.
+4. Token şu ýerde ýazylyp bilner —
+   `POST /api/auth/login` → `AuthResponse` → `accessToken`.
+
+> 🟡 «Bearer» sözüni **ýazmaň**. Headeriň özi `Authorization: Bearer
+> <token>` görnüşinde ýygylandyrýar. Diňe tókendiň özüni ýazyň.
+
+## Endpoint kategoriýalary
+
+| Kategoriýa | Endpointler |
+|---|---|
+| **Auth** ( açyk) | `POST /api/auth/register`, `POST /api/auth/login` |
+| **User** | `GET /api/users/me` |
+| **Account** | `POST /api/accounts`, `GET /api/accounts/me`,<br>`POST /api/accounts/me/deposit`, `.../withdraw`, `.../transfer`,<br>`GET /api/accounts/me/transactions` |
+| **Admin** (ROLE_ADMIN) | `GET /api/admin/users`, `.../users/{id}`,<br>`.../accounts`, `.../accounts/{id}`, `.../accounts/{id}/transactions` |
+
+Jemi: **14 endpoint**.
+
+## 🔴 Korag ulgamy ÜÝTGEMEDIK
+
+| Ýagdaý | Netije |
+|---|---|
+| Token ýok | **401** |
+| Token nädogry/üçük | **401** |
+| `ROLE_USER` → admin endpoint | **403** |
+| `ROLE_ADMIN` → admin endpoint | **200** |
+| `/api/docs-does-not-exist` token ýok | **401** |
+
+Dokumentasiýa diňe `/v3/api-docs/**` we `/swagger-ui/**` üçin açyk.
+`/api/**` — doly ýapyk.
+
+## 🔐 Näme DOKUMENTASIÝA-da ÝOK?
+
+Parol hash · JWT syr · SQL/Hibernate jikme-jiklikleri · stack
+trace · fayl ýollary — hiç haçan. `/v3/api-docs` faýlyny
+gözden geçirip, barlamak bolýar.
+
+## Testler
+
+**323/323 passed** (305 bar + 18 täze).
+
+| Faýl | Sany |
+|---|---|
+| `OpenApiDocumentationTest` | 18 |
+
+`OpenApiDocumentationTest` şulary barlaýar: `/v3/api-docs` → 200,
+boş däl, `Mini Bank API` title, `bearerAuth` (http/bearer/JWT),
+14 endpointiň hemmesi, 13 DTO shemasy, `ApiError` we `PageResponse`
+atlandyryşlarynyň dogrylygy, walidasiýanyň görünmegi we ýalňyş
+ýazylan şemalar — şeýle hem «dokumentasiýa açyk, API ýapyk».
+
+Flyway migration: **5** (üýtgemeýär). `ddl-auto=validate`,
+`open-in-view: false` — saklanýar.
+
 ---
 
 # PHASE 9 — Integration Hardening & Reliability

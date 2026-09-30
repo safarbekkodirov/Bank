@@ -4,24 +4,24 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 /**
- * HISTORY SORAGNIN FILTERI - barland parametrlar BIR OBYDE.
+ * HISTORY СОРОГУНУН ФИЛЬТРИ - берилген параметрлер БИР ОБЪЕКТТЕ.
  *
- *  EMNE BU AYRY KLAS?
- *     Sorag 7 parametirli (page, size, type, from, to, min, max).
- *     Controller-da 7 sany @RequestParam yazmak - okalmak kompl
- *     we her testde 7 setir yazmaly. Obyekt: bir setir, okalyar.
+ * 🧠 ЭМНЕ БУЛ АЙРЫ КЛАСС?
+ *     Сорог 7 параметрлүү (page, size, type, from, to, min, max).
+ *     Controller да 7 сан @RequestParam жазуу - окууга кыйын, жана
+ *     ар бир тестте 7 сат жазуу керек. Объект: бир сат, окууга ыңгайтуу.
  *
- *  BU NEDE SERVICE GEÇIRILMEDIK?
- *     DTO gaýtadan Service-a geçirilende içki öwrüş ýok.
- *     Ölçeg üçin ösüş Service-de, göçürme ýok.
+ * 🧡 ЭМНЕ БУЛ SERVICE ГЕ ӨТКӨРҮЛБӨДҮ?
+ *     DTO кайра Service ге өткөрүлгөндө ички өзгөртүү жок.
+ *     Өлчөм үчүн өсүш Service де, көчүрмө жок.
  *
- * @param page      0-den başlaýan sahypa belgisi (null -> default 0)
- * @param size      sahypa göwrümi (null -> default 20, max 100)
- * @param type      DEPOSIT/WITHDRAW/TRANSFER_IN/TRANSFER_OUT (null = ähli)
- * @param from      bu pursatdan soň (inclusive, null = çäksiz)
- * @param to        bu pursata çenli (inclusive, null = çäksiz)
- * @param minAmount iň az suma (inclusive, null = çäksiz)
- * @param maxAmount iň köp suma (inclusive, null = çäksiz)
+ * @param page      0 ден баштаган бет белгиси (null -> 0)
+ * @param size      бет көлөмү (null -> 20, максимум 100)
+ * @param type      DEPOSIT/WITHDRAW/TRANSFER_IN/TRANSFER_OUT (null = баары)
+ * @param from      ушул убакыттан кийин (киргизүлүү, null = чектелбеген)
+ * @param to        ушул убакытка чейин (киргизүлүү, null = чектелбеген)
+ * @param minAmount эң аз сумма (киргизүлүү, null = чектелбеген)
+ * @param maxAmount эң көп сумма (киргизүлүү, null = чектелбеген)
  */
 public record TransactionFilter(
         Integer page,
@@ -33,13 +33,13 @@ public record TransactionFilter(
         BigDecimal maxAmount
 ) {
 
-    /** Birinji sahypa. */
+    /** Биринчи бет. */
     public static final int DEFAULT_PAGE = 0;
 
-    /** Adaty sahypa göwrümi - 20 ýeterlik we RAM üçin howpsuz. */
+    /** Бет көлөмү - 20 жетиштүү жана RAM үчүн кооптуу. */
     public static final int DEFAULT_SIZE = 20;
 
-    /** Iň ýokary sahypa göwrümi. Sebäbi bu ýerde - DOSDDEN GORAG. */
+    /** Эң жогорку бет көлөмү. Себеби бул жерде - ДОСДЕН КОРГОО. */
     public static final int MAX_SIZE = 100;
 
     public TransactionFilter {
@@ -49,13 +49,13 @@ public record TransactionFilter(
     }
 
     /**
-     * Bos ýa-da diňe boşluk bolan teksti null edýäris.
+     * Бош же тек боштук болгон текстти null кылабыз.
      *
-     *  SEBÄBI: klient "?type=" (ýöne ýazmadyk) ýa-da "?type=   "
-     *     ýazsa - bu "syfyr" hökmünde gelýär. Eger biz ony
-     *     TransactionType öwürmäge çalşsaýdy -> 400 (ýalňyş jogap):
-     *     klient tötänleýin boş ýazdy, ýalňyş ýok.
-     *     Dogry çözgüt: "boş = filter ýok" diýip kabul etmek.
+     * 🧡 СЕБЕБИ: клиент «?type=» (жазбаган) же «?type=   »
+     *     жазса - бул «нөл» катарында келет. Эгер биз аны
+     *     TransactionType ке өткөргөнгө аракет кылсак -> 400
+     *     (жалган жооп): клиент кокустан бош жазды, ката жок.
+     *     Туура чечим: «бош = фильтр жок» деп кабылдоо.
      */
     private static String blankToNull(String value) {
         if (value == null) {

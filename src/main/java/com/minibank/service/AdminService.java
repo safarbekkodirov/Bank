@@ -1,6 +1,6 @@
 package com.minibank.service;
 
-import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,55 +29,55 @@ import com.minibank.repository.TransactionRepository;
 import com.minibank.repository.UserRepository;
 
 /**
- * ADMIN MAGLUMATLARY - diňe OKAÝAN (read-only, PHASE 8).
+ * ADMIN МААЛЫМАТТАРЫ - гана ОКУЙТ (read-only, PHASE 8).
  *
  * ==========================================================================
- *  🔴 IŇ MÖHÜM EREJE: BU SERVICE NÄME "ADMIÑ" DIÝIP BILMEÝÄR!
+ *  🔴 ЭҢ МАНИЛҮҮ ЭРЕЖЕ: БУЛ SERVICE «АДМИН» ДЕП БИЛБЕЙТ!
  * ==========================================================================
- *  Biz bu ýerde role barlamak ÝOK. Näme üçin?
+ *  Биз бул жерде role текшербеймиз. Эмне үчүн?
  *
- *     Ýol bir: role barlagy SERVICE-de ("if (!isAdmin) throw...").
- *     → ÝALŇYŞ. Sebäbi: bu diňe bir "gözcü" — gorag bu gapdan
- *       ötüp barylsa (mysal üçin köp controller, ýa-da täze bir
- *       ýerde bu service ulanylsa), gorag ýitýär. Gorag "bir ýerde"
- *       bolmaly, "her ýerde" bolmaly däl.
+ *     Бир жол: role текшерүү SERVICE де («if (!isAdmin) throw...»).
+ *         -> ЖАЛГАН. Себеби: бул гана бир «күзөтчү» - коргоо бул
+ *       эшиктен өтүп кетсе (мисалы көп controller, же жаңы
+ *       жерде бул service колдонулсо), коргоо ЖОГОЛУП КЕТЕТ.
+ *       Коргоо «бир жерде» болушу керек, «ар жерде» эмес.
  *
- *     Ýol iki: role barlagy SECURITYConfig-de (hasRole("ADMIN")).
- *     → DOGRY. Sebäbi: bu ÝOLARYŇ GIRËŞI. Sözbaşydan öňürti
- *       Controller-e ýetip ýetmän, eger ADMIN däl bolsa - 403.
- *       Service-e girmek mümkün bolmaz, şonuň üçin service-de
- *       gaýtadan barlamagyň GEREGI ÝOK.
+ *     Экинчи жол: role текшерүү SECURITYConfig де (hasRole(«ADMIN»)).
+ *     -> ТУУРА. Себеби: бул ЖОЛДУН КИРИШИ. Сөздөн мурда
+ *       Controller ге жетпейт, эгер ADMIN эмес болсо - 403.
+ *       Service кириши МҮМКҮН ЭМЕС, ошондуктан service де
+ *       кайра текшерүүнүн КЕРЕГИ ЖОК.
  *
- *  Şonuň üçin: Security = hasRole. Service = diňe köçürme.
- *  Eki gatlagyň biri üstüne biri: Security (kim) + Service (näme).
+ *  Ошондуктан: Security = hasRole. Service = гана көчүрмө.
+ *  Эки каттамдын бири үстүнө бири: Security (ким) + Service (эмне).
  *
  * ==========================================================================
- *  🟡 IKKI SECURITY MODEL ARAŞMAÝAR (18-njy bend):
+ *  🟡 ЭКИ КООПСУЗДУК МОДЕЛИ АРАЛАШПАЙТ (18-инчи пункт):
  * ==========================================================================
  *     USER  -> /api/accounts/me/transactions
- *          -> "BENIŇ esebim" - esep ID-si TOKENDEN alynýar.
+ *          -> «МЕНИҢ эсебим» - эсеп ID си ТОКЕНДЕН алынат.
  *          -> TransactionService.getMyTransactions(userId, filter)
  *
  *     ADMIN -> /api/admin/accounts/{accountId}/transactions
- *          -> "ŞU esebiň taryhy" - esep ID-si URL-den Alynýar.
+ *          -> «УШУ эсептин тарыхы» - эсеп ID си URL ден алынат.
  *          -> AdminService.getAccountTransactions(accountId, filter)
  *
- *     Bu ikini BIR Service-de birleşdirsek - kimme haýsy esep
- *     görkezilýändigi anlaýsyz bolup gider. Bu - köp mümkin bolan
- *     ýalňyş (bir ýerde ID aldak, bir ýerde okadak). Şonuň üçin
- *     AÝRY metot. Reuse bar (Specification, filter, sort),
- *     ýöne güýçli meýdan (security) AÝRY.
+ *     Эки бирин БИР Service де бириктирсек - кимге кайсы эсеп
+ *     көрсөтүлүп жатканы түшүнүксүз болуп кетти. Бул - көп
+ *     мүмкүн болгон ката (бир жерде ID алдык, бир жерде окуйбуз).
+ *     Ошондуктан АЙРЫ метод. Reuse бар (Specification, filter, sort),
+ *     бирок күчтүү талаа (коопсуздук) АЙРЫ.
  *
  * ==========================================================================
- *  🔴 BU FAZADA JAZMA ÝOK (26/27/28-njy bender):
+ *  🔴 БУЛ ФАЗАДА ЖАЗУУ ЖОК (26/27/28-инчи пункттар):
  * ==========================================================================
- *     - deposit / withdraw / transfer üçin admin endpoint ÝOK
- *       (akça diňe esebiň öz eýesi tarapyndan hereketlenýär)
- *     - role üýtgetme ÝOK (privilege escalation howpy)
- *     - delete user / account ÝOK (ON DELETE RESTRICT)
+ *     - deposit / withdraw / transfer үчүн admin endpoint ЖОК
+ *       (акча гана эсебинин өз ээси тарабынан жылдырылат)
+ *     - role өзгөртүү ЖОК (privilege escalation коркунучу)
+ *     - delete user / account ЖОК (ON DELETE RESTRICT)
  *
- *     Bu faza DIŇE OKAÝAN administrasiýa. Ýazyjak endpoint üçin
- *     ayratyn düşündiriş we ýana kada talap edilýär.
+ *     Бул фаза ГАНА ОКУЙТ administration. Жазыла турган endpoint
+ *     үчүн айрым ой жүгүртүү жана кошумча эреже талап кылат.
  */
 @Service
 public class AdminService {
@@ -105,20 +105,20 @@ public class AdminService {
     // ======================================================================
 
     /**
-     * BARLYK KOLLONUWCULAR - sahypa sahypa, gysgaýy gözleg bilen.
+     * БАРДЫК КОЛДОНУУЧУЛАР - бет боюнча, кыска издөө менен.
      *
-     * @param page   sahypa (0-den)
-     * @param size   sahypa göwrümi (1..100)
-     * @param search "safar" ýaly - at ýa-da email boýunça (optional)
+     * @param page   бет (0 ден)
+     * @param size   бет көлөмү (1..100)
+     * @param search «safar» сыяктуу - ат же email боюнча (милдеттүү эмес)
      */
     @Transactional(readOnly = true)
     public PageResponse<AdminUserResponse> getAllUsers(Integer page, Integer size, String search) {
 
         validatePagination(page, size);
 
-        // 🧡 SORT: createdAt DESC, id DESC (PHASE 7-yň usuly - BIR
-        //    standart). Kim "sort=passwordHash" diýip soralsa -
-        //    Parameter däl, biz ynamasýarys (SQL injection goragy).
+        // 🧡 СОРТ: createdAt DESC, id DESC (PHASE 7 нин ыкмасы - БИР
+        //    стандарт). Ким «sort=passwordHash» деп соросо -
+        //    Параметр эмес, биз ишенбейбиз (SQL injection коргоосу).
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt", "id");
 
         Page<User> result = userRepository.findAll(
@@ -129,20 +129,21 @@ public class AdminService {
     }
 
     /**
-     * Gözleg: fullName ýa-da email boýunça, harpuly DÖLDIRMEÝÄR.
+     * Издөө: fullName же email боюнча, тамгасыз КАЙТАРБАЙТ.
      *
-     * 🧡 NÄME ÜÇIN lower? "Safar" bilen gözleýärsin - "safar" da
-     *     gutarýar. Sebäbi: howpsuzlyk birinji orunda, pastdan
-     *     uly harply ulanyp gözlemek amaly köpüülöy. SQLite/PostgreSQL
-     *     "ILIKE" diýip şeýle gözlegi gönüden-göni goldaýar.
+     * 🧡 ЭМНЕ УЧУН lower? «Safar» деп издесең - «safar» да
+     *     табылат. Себеби: коопсуздук биринчи орунда, тамгасыз
+     *     издөө көп колдонулат. PostgreSQL «ILIKE» деп мындай
+     *     издөөнү түз да колдойт.
      *
-     * 🟡 SQLI GORAGY: ilike() FAYLANS, биз ýazýarys - ulanyjaýyn
-     *     ýazgy bir ýere goşulýar, SQL-iň içine gönülde göçürülmeýär.
+     * 🟡 SQLI КОРГООСУ: ilike() ПАРАМЕТР АЛМАЙТ, биз жазабыз -
+     *     колдонуучунун жазуусу бир жерге кошулат, SQL ичине
+     *     түз которулбайт.
      */
     private Specification<User> buildUserSpecification(String search) {
 
         if (search == null || search.isBlank()) {
-            return null;   // hili filter ýok - ählisi
+            return null;   // эч кандай фильтр жок - баары
         }
 
         String pattern = "%" + search.trim().toLowerCase() + "%";
@@ -158,7 +159,7 @@ public class AdminService {
         };
     }
 
-    /** Bir kollonuwcu - id boýunça. Ýok bolsa 404. */
+    /** Бир колдонуучу - id боюнча. Жок болсо 404. */
     @Transactional(readOnly = true)
     public AdminUserResponse getUserById(Long id) {
         User user = userRepository.findById(id)
@@ -172,9 +173,9 @@ public class AdminService {
     // ======================================================================
 
     /**
-     * BARLYK ESEPLER - ýa-da aýratyn bir ýeňişçiniň esebi.
+     * БАРДЫК ЭСЕПТЕР - же бир колдонуучунун эсеби.
      *
-     * @param userId optional: "bu kollonuwçynyň esebi" (null = hemmesi)
+     * @param userId милдеттүү эмес: «бул колдонуучунун эсеби» (null = баары)
      */
     @Transactional(readOnly = true)
     public PageResponse<AdminAccountResponse> getAllAccounts(
@@ -188,10 +189,11 @@ public class AdminService {
                 ? null
                 : (root, query, cb) -> cb.equal(root.get("user").get("id"), userId);
 
-        // 🔴 findAllWithUser: JOIN FETCH - user maglumaty BIR soragda.
-        //    Specification bilen işletsek, biz ýöne findAll(Spec, Pageable)
-        //    ulanypdym - ol aýratyn sorag ýaratýar (join ýok).
-        //    Şonuň üçin iki ýagdaýy aýry-aýry handle edýäris.
+        // 🔴 findAllWithUser: JOIN FETCH - колдонуучу маалыматы БИР
+        //    сорогда. Specification менен иштесек, биз гана
+        //    findAll(Spec, Pageable) колдонгон болчу - ал айрым
+        //    сорог түзөт (join жок). Ошондуктан эки абалды
+        //    айры-айры иштейбиз.
         Page<Account> result = (spec == null)
                 ? accountRepository.findAllWithUser(PageRequest.of(page, size, sort))
                 : accountRepository.findAll(spec, PageRequest.of(page, size, sort));
@@ -199,7 +201,7 @@ public class AdminService {
         return PageResponse.of(result, adminMapper::toAdminAccountResponse);
     }
 
-    /** Bir esep - id boýunça (user maglumaty bilen). Ýok bolsa 404. */
+    /** Бир эсеп - id боюнча (колдонуучу маалыматы менен). Жок болсо 404. */
     @Transactional(readOnly = true)
     public AdminAccountResponse getAccountById(Long id) {
         Account account = accountRepository.findByIdWithUser(id)
@@ -209,39 +211,40 @@ public class AdminService {
     }
 
     // ======================================================================
-    //  TRANSACTIONS (any esabyň taryhy)
+    //  TRANSACTIONS (кайсы эсептин тарыхы болсо)
     // ======================================================================
 
     /**
-     * ESABYŇ TARHYHY - admin üçin, islendik esap.
+     * ЭСЕПТИН ТАРЫХЫ - admin үчүн, кайсы эсеп болсо.
      *
-     * 🟡 ÖNKI SERVICE BILEN PARKI:
+     * 🟡 МУРУНКУ SERVICE МЕНЕН ПАРКЫ:
      *     TransactionService.getMyTransactions(userId, filter) -
-     *     ol ESABYŇ ID-sini TOKENDEN alýar we özü tapýar.
-     *     Bu ýerde admin esaby AÇYP BERÝÄR (URL-den). Ýagny:
-     *         bir ýerde "benim esebim", ýokaryda "şu esep".
+     *     ал ЭСЕП ИД СИН ТОКЕНДЕН алат жана өзү табат.
+     *     Бул жерде admin эсепти АЧЫП БЕРЕТ (URL ден). Демек:
+     *         бир жерде «менин эсебим», жогоруда «ушул эсеп».
      *
-     * 🧡 REUSE: sort we filter (TransactionFilter) - olaryň ýarysy
-     *     ulanylýar. TransactionMapper - göni ulanylýar. Specification
-     *     gural ýöne ýokaryda takyk ýazylan (esep id öňünden belli).
+     * 🧡 REUSE: sort жана filter (TransactionFilter) - алардын
+     *     бир бөлүгү колдонулат. TransactionMapper - түз колдонулат.
+     *     Specification эрежеси болсо жогоруда так жазылган
+     *     (эсеп id алдыннан белгилүү).
      */
     @Transactional(readOnly = true)
     public PageResponse<TransactionResponse> getAccountTransactions(
             Long accountId, TransactionFilter filter) {
 
-        // (1) Esep bar bolsa? Ýoksa 404 (takyk jogap, "gatyşyk" däl).
-        //     🧡 MÖHÜM: bu yzarlamak bilen emele gelýär. Sebäbi
-        //     esep ýok bolsa aşakdaky Specification "0 ýazgy" gaýtaryp
-        //     bilerdi - klient "200, ýazgy ýok" diýip gülümserdi,
-        //     ýöne sebäbini anlamazdy. 404 - takyk.
+        // (1) Эсеп барбы? Жок болсо 404 (так жооп, «амалдаш эмес»).
+        //     🧡 МАНИЛҮҮ: бул текшерүү менен иштейт. Себеби
+        //     эсеп жок болсо төмөнкү Specification «0 жазуу» кайтарар
+        //     эле - клиент «200, жазуу жок» деп күлүмдөп, бирок
+        //     себебин түшүнбөгөн болор эле. 404 - так.
         accountRepository.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException(
                         "Account with id " + accountId + " not found"));
 
-        // (2) PHASE 7-yň filterini doly validasiýa et (bir kada!).
+        // (2) PHASE 7 нин фильтрин толук текшер (бир эреже!).
         validateTransactionFilter(filter);
 
-        // (3) Specification - esap sherti MÖHÜM (esap id şu ýerde).
+        // (3) Specification - эсеп шарты МАНИЛҮҮ (эсеп id ушул жерде).
         Specification<com.minibank.entity.Transaction> spec = (root, query, cb) -> {
             List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("account").get("id"), accountId));
@@ -265,7 +268,7 @@ public class AdminService {
             return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
         };
 
-        // (4) BIRMEŇEŞ tertip PHASE 7 bilen: createdAt DESC, id DESC.
+        // (4) БИРДЕШ ирет PHASE 7 менен: createdAt DESC, id DESC.
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt", "id");
 
         Page<com.minibank.entity.Transaction> result = transactionRepository.findAll(
@@ -275,16 +278,17 @@ public class AdminService {
     }
 
     // ======================================================================
-    //  ORTAK VALIDASIÝA
+    //  ЖАЛПЫ ТЕКШЕРҮҮ
     // ======================================================================
 
     /**
-     * Sahypa parametrleri - USER hem, ADMIN üçin bir kada.
+     * Бет параметрлери - USER жана ADMIN үчүн бир эреже.
      *
-     * 🧡 NÄME BU Service-de däl-de Controller-de näme däl?
-     *     Service-de - sebäbi bu "içki köçürme": test, kelleýinji
-     *     endpoint ýa-da klientiň içki kodu hem çagyryp bilýär.
-     *     Her ýerde bir kada tutsak ol kada ÝOGSAÝAR.
+     * 🧡 ЭМНЕ БУЛ Service де эмес, Controller де эмес?
+     *     Service де - себеби бул «ички көчүрмө»: тест,
+     *     кийинки endpoint же колдонуучунун ички коду да
+     *     чакыра алат. Ар жерде бир эреже турса, ал эреже
+     *     ЖОК болуп калат.
      */
     private void validatePagination(Integer page, Integer size) {
         if (page < 0) {
@@ -300,14 +304,14 @@ public class AdminService {
     }
 
     /**
-     * Transaction filter - PHASE 7-daky bilen BIRMEŇEŞ kada.
+     * Transaction фильтри - PHASE 7 менен БИРДЕШ эреже.
      *
-     * 🧡 BUL DUPLICATION DÄL - bu BILINTLI. Iki Service-de bir
-     *     ýagdaýy köçürmek gowy däl - birini üýtgertseň, ikincisi
-     *     galan (sirli: "bir kada ýerinde" däl bolýar). Ýöne şu
-     *     ýerde ýönekeý 4 hat görkezilýär. Geljekki fazada
-     *     olary BIR klassa çykarmak dogry bolar - emma indi
-     *     şeýle abstraction talap edilmedi (42-njy bend).
+     * 🧡 БУЛ КОШУМЧА ЭМЕС - бул ТАСИЛДҮҮ. Эки Service де бир
+     *     абалды көчүрүү жакшы эмес - бирин өзгөртсөң, экинчиси
+     *     калат (жашыруун: «бир жердеги эреже» эмес болуп калат).
+     *     Бирок бул жерде жөнөкөй 4 кат көрсөтүлгөн. Кийинки
+     *     фазада аларды БИР класска чыгаруу туура болот - бирок
+     *     азыр мындай abstraction талап кылынбады (42-инчи пункт).
      */
     private void validateTransactionFilter(TransactionFilter filter) {
         if (filter.page() < 0) {
