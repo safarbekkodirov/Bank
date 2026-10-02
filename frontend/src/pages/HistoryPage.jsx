@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AccountApi } from '../api/client.js'
+import ErrorBanner from '../components/ErrorBanner.jsx'
 
 const TYPES = ['', 'DEPOSIT', 'WITHDRAW', 'TRANSFER_IN', 'TRANSFER_OUT']
 
@@ -9,18 +10,17 @@ const INCOMING = new Set(['DEPOSIT', 'TRANSFER_IN'])
 export default function HistoryPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(null)
   const [page, setPage] = useState(0)
 
   const [filter, setFilter] = useState({ type: '', minAmount: '', maxAmount: '' })
 
   const load = (p = page) => {
     setLoading(true)
-    setError('')
+    setError(null)
     AccountApi.transactions({ page: p, size: 10, ...filter })
       .then((d) => { setData(d); setPage(d.page) })
-      .catch((ex) => setError(ex.message === 'SERVICE_UNAVAILABLE'
-        ? '⏳ Серверге убакыт кетти (база жеткиликсиз).' : ex.message))
+      .catch((ex) => setError(ex))
       .finally(() => setLoading(false))
   }
 
@@ -58,7 +58,7 @@ export default function HistoryPage() {
         <button className="btn-secondary btn-sm">Фильтрлеү</button>
       </form>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      <ErrorBanner error={error} />
       {loading && <div className="spinner">Жүктөлүүдө…</div>}
 
       {data && !loading && (

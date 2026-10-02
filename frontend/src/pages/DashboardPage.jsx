@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { AccountApi } from '../api/client.js'
+import ErrorBanner from '../components/ErrorBanner.jsx'
 
 export default function DashboardPage() {
   const [account, setAccount] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(null)
   const [notice, setNotice] = useState('')
   const [tab, setTab] = useState('deposit')
 
@@ -12,17 +13,43 @@ export default function DashboardPage() {
   const [description, setDescription] = useState('')
   const [toAccountNumber, setToAccountNumber] = useState('')
   const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  /**
+   * 🧡 ЭСЕП НОМУРУН КӨЧҮРҮҮ
+   *
+   * navigator.clipwright — «коопсуз контекст» деп аталат:
+   * HTTPS эмес (http://localhost — иштейт, бирок IP менен
+   * кирсе иштемейт) болсо, браузер аны БЛОККО сатат.
+   * Ошондуктан биз аваптык жол да бар — эгер башка бир
+   * браузерде иштебей калса, колдонуучу «көчүрүү жок» деп
+   * карап калбасун.
+   */
+  const copyNumber = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const el = document.createElement('textarea')
+      el.value = text
+      document.body.appendChild(el)
+      el.select()
+      try { document.execCommand('copy') } catch { /* эч нэрсе эмес */ }
+      document.body.removeChild(el)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const load = () => {
     setLoading(true)
-    setError('')
+    setError(null)
     AccountApi.mine()
       .then(setAccount)
       .catch((ex) => {
         // 🧡 404 = эсеп жок (катталуунун 2-кадамы) — БУ КАТА ЭМЕС,
         //    бул «жашыл абал»: колдонуучуга эсеп ачууну көрсөтөбүз.
         if (ex.status === 404) setAccount(null)
-        else setError(ex.message)
+        else setError(ex)
       })
       .finally(() => setLoading(false))
   }
@@ -31,7 +58,7 @@ export default function DashboardPage() {
 
   const submit = async (e) => {
     e.preventDefault()
-    setError(''); setNotice(''); setBusy(true)
+    setError(null); setNotice(''); setBusy(true)
     try {
       if (tab === 'deposit') {
         const r = await AccountApi.deposit(amount, description)
@@ -46,13 +73,10 @@ export default function DashboardPage() {
       setAmount(''); setDescription(''); setToAccountNumber('')
       load()
     } catch (ex) {
-      // 🔴 503 = база жеткиликсиз (PHASE 10D). Бул «сен натыйжасыз»
-      //    эмес — «сервер убакыт талап кылууда», андык күтүү керек.
-      if (ex.message === 'SERVICE_UNAVAILABLE') {
-        setError('⏳ Серверге убакыт кетти (база жеткиликсиз). Аздан кейин кайталап көрүңүз.')
-      } else {
-        setError(ex.message)
-      }
+      // 🔴 503 = база жеткиликсиз (PHASE 10D) — «сен натыйжасыз»
+      //    ЭМЕС, «сервер убакыт талап кылууда». ErrorBanner аны
+      //    «күтүңүз» түсү менен, желги катаны «🔌» менен көрсөтөт.
+      setError(ex)
     } finally {
       setBusy(false)
     }
@@ -78,7 +102,26 @@ export default function DashboardPage() {
       <div className="balance-card">
         <div className="balance-label">Баланс</div>
         <div className="balance-amount">{account.balance} {account.currency}</div>
-        <div className="balance-meta mono">{account.accountNumber}</div>
+
+        {/* 🔴 ЭСЕП НОМУРУ — КӨЧҮРҮҮЧҮ.
+            БУ НЕГЕ МЫКТЫҢ:
+            «Которуу» үчүн КАЙДАЙ ЭСЕПКЕ жөнөтүү керек? Биз эсеп
+            номурун эч кайда табабыз — эгер көрүп турбаса,
+            «которуу» функциясы колдонулбас эле. Ошондуктан
+            эсебибиз номурун КӨРСӨТҮП, көчүрүүгө мүмкүнчүлүк
+            беребиз: эки колдонуучу бири-бирине сыноо үчүн
+            ушул номурду колдоно алышат. */}
+        <div className="balance-meta">
+          Эсеп номуру:{' '}
+          <span className="mono">{account.accountNumber}</span>
+          <button
+            className="btn-secondary btn-sm"
+            style={{ marginLeft: 10 }}
+            onClick={() => copyNumber(account.accountNumber)}
+          >
+            {copied ? '✓ Көшүрүлдү' : 'Көшүрүү'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}

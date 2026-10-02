@@ -1,20 +1,21 @@
 import { useEffect, useState } from 'react'
 import { AdminApi, userStore } from '../api/client.js'
+import ErrorBanner from '../components/ErrorBanner.jsx'
 
 export default function AdminPage() {
   const [users, setUsers] = useState(null)
   const [accounts, setAccounts] = useState(null)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const load = () => {
     setLoading(true)
-    setError('')
+    setError(null)
     Promise.all([AdminApi.users(), AdminApi.accounts()])
       .then(([u, a]) => { setUsers(u); setAccounts(a) })
       .catch((ex) => setError(ex.status === 403
-        ? '⛔ Бул баракка уруксат жок (ROLE_ADMIN керек)'
-        : ex.message))
+        ? Object.assign(new Error('⛔ Бул баракка уруксат жок (ROLE_ADMIN керек)'), { code: 'FORBIDDEN' })
+        : ex))
       .finally(() => setLoading(false))
   }
 
@@ -27,7 +28,7 @@ export default function AdminPage() {
 
   return (
     <>
-      {error && <div className="alert alert-error">{error}</div>}
+      <ErrorBanner error={error} />
       {loading && <div className="spinner">Жүктөлүүдө…</div>}
 
       {users && (

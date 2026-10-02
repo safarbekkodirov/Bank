@@ -1,18 +1,19 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AuthApi, tokenStore, userStore } from '../api/client.js'
+import ErrorBanner from '../components/ErrorBanner.jsx'
 
 export default function RegisterPage({ onLogin }) {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
 
   const submit = async (e) => {
     e.preventDefault()
-    setError('')
+    setError(null)
     setBusy(true)
     try {
       await AuthApi.register({ fullName, email, password })
@@ -24,7 +25,7 @@ export default function RegisterPage({ onLogin }) {
       onLogin(res.user)
       navigate('/')
     } catch (ex) {
-      setError(ex.message || 'Ката кетти')
+      setError(ex)
     } finally {
       setBusy(false)
     }
@@ -36,7 +37,7 @@ export default function RegisterPage({ onLogin }) {
         <h1>Катталуу</h1>
         <p className="subtitle">Жаңы эсеп түзүңүз</p>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        <ErrorBanner error={error} />
 
         <form onSubmit={submit}>
           <label>Аты-жөнү</label>

@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage.jsx'
 import HistoryPage from './pages/HistoryPage.jsx'
 import AdminPage from './pages/AdminPage.jsx'
 import Layout from './components/Layout.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 
 /**
  * 🧡 ТОКЕН ӨТКӨН БОЛСО → ЛОГИН БЕТКЕ КАЙТЫМЫ?
@@ -44,14 +45,16 @@ export default function App() {
   }
 
   return (
-    <Routes>
+    <ErrorBoundary>
+      <Routes>
       <Route path="/login"    element={user ? <Navigate to="/" /> : <LoginPage onLogin={setUser} />} />
       <Route path="/register" element={user ? <Navigate to="/" /> : <RegisterPage onLogin={setUser} />} />
       <Route element={user ? <Layout user={user} onLogout={() => { tokenStore.clear(); setUser(null) }} /> : <Navigate to="/login" />}>
         <Route path="/"          element={<DashboardPage />} />
         <Route path="/history"   element={<HistoryPage />} />
         <Route path="/admin"     element={<AdminPage />} />
-      </Route>
-    </Routes>
+        </Route>
+      </Routes>
+    </ErrorBoundary>
   )
 }

@@ -48,11 +48,26 @@ export async function api(path, { method = 'GET', body, auth = true } = {}) {
     headers['Authorization'] = `Bearer ${token}`
   }
 
-  const res = await fetch(path, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined
-  })
+  // 🔴 fetch ӨЗҮНЕ ҚАЛТЫРМАЙДЫ.
+  //    Сервер жабык болсо, HTTP коду ЖОК — браузер `TypeError`
+  //    сатат («Failed to fetch»). Экен экен текшербесек,
+  //    колдонуучу англисче «Failed to fetch» көрүп, ойлойт:
+  //    «менем браузерди бузуп алдымбы?» Биз аны кармап,
+  //    кыргызча түшүнүктүү билдирүүгө айлантырабыз.
+  let res
+  try {
+    res = await fetch(path, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined
+    })
+  } catch {
+    const err = new Error(
+      'Серверге жетүү мүмкүн болгон жок. Backend иштеп жатырма? ' +
+      'Терминалда `./mvnw spring-boot:run` иштетиңиз.')
+    err.code = 'NETWORK'
+    throw err
+  }
 
   if (res.status === 401 && auth) {
     handleUnauthorized()
@@ -62,14 +77,25 @@ export async function api(path, { method = 'GET', body, auth = true } = {}) {
   // 🔴 503 = база жеткиликсиз (PHASE 10D). Бул 401 ЭМЕС —
   //    токен догру, бирок серверге убакыт керек.
   if (res.status === 503) {
-    throw new Error('SERVICE_UNAVAILABLE')
+    const err = new Error(
+      '⏳ Серверге убакыт кетти (база жеткиликсиз). ' +
+      'Бир нече секунддан кийин кайталап көрүңүз.')
+    err.code = 'SERVICE_UNAVAILABLE'
+    throw err
   }
 
+  // 🟡 Жапобу JSON ЭМЕС болсо (мисалы nginx 502 html берет)
+  //    — JSON.parse укмайт. Биз аны жумшак кармайбыз.
   const text = await res.text()
-  const data = text ? JSON.parse(text) : null
+  let data = null
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch {
+    data = null
+  }
 
   if (!res.ok) {
-    const message = data?.message || `HTTP ${res.status}`
+    const message = data?.message || `Сервер ${res.status} катасын кайтарды.`
     const err = new Error(message)
     err.status = res.status
     err.data = data
