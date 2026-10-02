@@ -138,6 +138,16 @@ public class AuthController {
             @ApiResponse(responseCode = "401", description = "Email же пароль "
                     + "туура эмес",
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
+            // 📈 PHASE 10D: 503 — база жеткиликсиз.
+            //    🔴 BU ÝERDE 401 WE 503-IŇ TAPAWUTY IŇ MÖHÜM:
+            //    bu endpoint AÇYK, ýagny token hiç haçan bolmaýar.
+            //    Şonuň üçin 401 diýmek «sen nädogry» diýmek bolardy —
+            //    ýalňyş bolsa-de, ýokaryda («база ýok»).
+            //    503 bolsa klient anlar: «gatnaşyk ýarym, soňra gaýtala».
+            @ApiResponse(responseCode = "503", description = "Маалымат базасы "
+                    + "жеткиликсиз — логин üçin ulanyjy tapyp bolmaýar "
+                    + "(инфраструктура ýalňyşy, колдонуучuň ýalňyşy EMES)",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
             @ApiResponse(responseCode = "415", description = "Content-Type "
                     + "application/json ЭМЕС",
                     content = @Content(schema = @Schema(implementation = ApiError.class)))

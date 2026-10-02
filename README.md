@@ -21,7 +21,7 @@ Java Backend, Spring Boot, PostgreSQL, REST API, Authentication жана бан�
 | springdoc-openapi (Swagger UI) | 2.8.17 |
 | Spring Boot Actuator | (Spring Boot bilen biige keleýär) |
 
-## Учурдагы абал: **PHASE 10C — Observability**
+## Учурдагы абал: **PHASE 10D — Database Failure Handling**
 
 Эми иштеп ятат: эсеп ачабыз, акча салýarys, çekýäris, başga esäbe geçirýäris we
 öz operasiýalarymyň **taryhyny sahypa sahypa** görýäris. Ähli amallar
@@ -903,6 +903,7 @@ src/main/resources/
 | 10A | API Documentation + OpenAPI (Swagger UI) | ✅ |
 | 10B | Database Backup, Recovery & Operational Reliability | ✅ |
 | 10C | Observability (Actuator, Health, Metrics, Logging) | ✅ |
+| 10D | Database Failure Handling & Auth Resilience (503) | ✅ |
 | 10 | Frontend | ⬜ |
 
 ---
@@ -1539,3 +1540,225 @@ JWT syry hiç ýerde sızmaýar.
 | `/api/admin/users` | 401 | 401 | **403** | **200** |
 
 \* Admin-iň öz eşegi ýok — bu biznes düzgüni, korag däl.
+
+---
+
+# PHASE 10D — Database Failure Handling & Authentication Resilience
+
+Jany biznes-funksiýa **ÝOK**, jany schema **ÝOK** (V6 ýok),
+JWT format **ÜÝTGEMEDI** (HS512, issuer `minibank`, claims — hemmesi
+özgärdi). Bu faza diňe bir ýalňyşy düzedýär — ol PHASE 10C-de
+«out-of-scope» diýlip goýulýardy.
+
+## 🔴 NÄME ÜÇIN BU FAZA?
+
+PHASE 10C-de şeýle bir ýagdaý açyldy:
+
+```text
+docker compose stop postgres
+curl -H "Authorization: Bearer <VALID TOKEN>" /api/users/me
+```
+
+**Jogaby: 401.** Emma ol **NÄDOGRY** — sebäbi:
+
+```text
+401 diýmek  →  «SENIŇ TOKEŇIŇ NÄDOGRY»      (authentication failure)
+                ↯ emma şonda token SHOL DOGRYDI
+503 diýmek  →  «SEN DOGRY, emma MEN PESELDIM» (infrastructure failure)
+```
+
+🔴 **Bu näme üçin howply?** Klient 401 görse, ol ýalňyşlyk
+düşünip **tokenini täzeleýär** — ýene bir gezek hödürleýär,
+ýene 401 alýar, we soňunda **ulanyjy NYKDAN çykýar**. Sebäbi
+«Reset password» düwmesi işlemeýär: parol dogry, sorag ýok.
+Ondaşyk kömekçi bu hadysany «Nätijede haýsy ýagdaýda bolýar?»
+diýip tapyp bilmeýär.
+
+## Failure classification
+
+| Ýagdaý | Before (10C) | **After (10D)** |
+|---|---|---|
+| Token ýok | 401 | **401** |
+| Token malformed | 401 | **401** |
+| Token tampered | 401 | **401** |
+| Token expired | 401 | **401** |
+| Wrong signature | 401 | **401** |
+| Wrong issuer | 401 | **401** |
+| Valid token + user ýok | 401 | **401** |
+| USER → admin | 403 | **403** |
+| ADMIN → admin | 200 | **200** |
+| **Valid token + DB outage** | ~~401~~ | **503** ✅ |
+| **Public endpoint + DB outage** | ~~500~~ | **503** ✅ |
+| **Admin endpoint + DB outage** | ~~401~~ | **503** ✅ |
+
+## Ýalňyşyň kökü (root cause)
+
+```java
+// JwtAuthenticationFilter — (6)-nji ädim
+User user = userRepository.findById(userId).orElse(null);
+//        ↑ bu ýerde DB öçen bolsa Exception çykýar
+```
+
+Ýalňyş **filter-da** döredilýär — ol Controller-den öň geçýär.
+Şonuň üçin `@RestControllerAdvice` (GlobalExceptionHandler)
+oňa **ýetip bilmeýär**: logda «Servlet.service() for servlet
+[dispatcherServlet] threw exception» diýip görünýär, soň
+`/error` çenli ýetip, SecurityContext ýok bolany üçin
+**401** döredilýärdi.
+
+## Näme üçin 503, 500 däl?
+
+* **500** = «программа өзи ýalňyş etdi» → ýagdaýy düzetmeli
+* **503** = «программа саz, ýöne ýokary ýagdaý döredildi» →
+  klient «soňra gaýtalaýyn» diýip bilýär
+
+## 🔴 Exception classification — näme BILEN, näme BILEN DÄL
+
+**Faýl:** `security/JwtAuthenticationFilter.java`
+
+```java
+} catch (DataAccessException | TransactionException | PersistenceException ex) {
+    // → 503
+} catch (JwtException | IllegalArgumentException ex) {
+    // → 401 (existing behaviour, ÜÝTGEÝÄR)
+}
+```
+
+🧡 **Näme üçin ÜÇ familiýa?**
+
+| Exception | Kim ýatýar |
+|---|---|
+| `DataAccessException` | Spring data-access: connection, timeout, lock |
+| `TransactionException` | **CannotCreateTransactionException** |
+| `PersistenceException` | JPA/Hibernate |
+
+🔴 **`TransactionException` näme üçin möhüm?** Bu fazanyň
+iň möhüm tapawudy. PHASE 10C-de çykan hakyky ýalňyş şuýlady:
+
+```text
+org.springframework.transaction.CannotCreateTransactionException:
+Could not open JPA EntityManager for transaction
+```
+
+Ol `DataAccessException` **EMES** — ol `TransactionException`.
+Iki familiýa «garaşynda» (sibling) — ikisi-de
+`NestedRuntimeException`-den gelip çykýar. Şonuň üçin diňe
+`DataAccessException` diýse, hakyky outage ýagdaýy **süzülüp
+geçýärdi** we faza **hiç işlemeýärdi».
+
+⛔ **`catch (Exception e)` ÝAZYLMAÝAR.** Sebäbi onda şular hem
+503 bolardy: `NullPointerException`, `IllegalStateException`,
+progrämmanyň öz ýalňyşy — ýagny «ýokaryda bir ýokary ýagdaý»
+diýip ýalňyş görkezilýärdi. Bu **test #12** bilen gözegçilik
+edilýär.
+
+## 503 jogaby
+
+```json
+{
+  "timestamp": "2026-01-01T10:10:00Z",
+  "status": 503,
+  "error": "Service Unavailable",
+  "message": "Service temporarily unavailable. Please try again later.",
+  "path": "/api/users/me",
+  "fieldErrors": []
+}
+```
+
+🔴 **Jogapda NÄME ÝOK:** SQL · `jdbc:` · DB ady · ulanyjyň
+ady · parol · stack trace · `org.hibernate...` · fayl ýoly ·
+JWT tókéni.
+
+## Logging
+
+```text
+Database unavailable while authenticating request GET /api/users/me
+Database unavailable while handling POST /api/auth/login
+```
+
+⛔ Logda **ýok**: tókén · `Authorization` header · parol · DB paroly.
+(Subut: logda `Bearer eyJ` — **0**, `Password123!` — **0**.)
+
+## 🔑 Hikari timeout — 3 sekunt
+
+PHASE 10C-däki sazlamak **saklanypdyr**:
+
+```yaml
+spring:
+  datasource:
+    hikari:
+      connection-timeout: 3000
+```
+
+Bu **möhüm**: hökmany sazlamak bolmasy, DB öçende sorag
+**30 sekunt** garaşyp, soň ýene-de 401/500 bermek bilen
+gijikdirýärdi.
+
+**Subut (çyn JAR, real öçürme):**
+
+```text
+/api/users/me  valid token, DB down = 503   (took 3027 ms)  ✅
+```
+
+## Health — 10C behaviour saklanypdyr
+
+```bash
+docker compose stop postgres
+curl localhost:8080/actuator/health     # {"status":"DOWN"}  HTTP 503
+docker compose start postgres
+curl localhost:8080/actuator/health     # {"status":"UP"}    HTTP 200
+```
+
+## Testler
+
+**19 täze test** (17 hemişe + 2 docker-opt-in).
+
+| Faýl | Sany | Näme barlaýar |
+|---|---|---|
+| `DatabaseFailureAuthenticationTest` | 17 | 401/503 bölüşi, ýalňyş sızmaýar, programmа ýalňyşy 503 **däl** |
+| `DatabaseOutageDockerTest` | 2 | Hakyky `docker compose stop/start` (opt-in) |
+
+> 🟡 `DatabaseOutageDockerTest` diňe
+> `PHASE10D_DOCKER_TESTS=true` bilen işleýär. `@AfterAll`
+> **hemişe** Postgres-i gaýtadan işledýär.
+> ⛔ `docker compose down -v` **hiç haçan**.
+
+### Iki usul — näme üçin ikisi?
+
+| Usul | Näme barlaýar |
+|---|---|
+| `@MockitoSpyBean` | Filter-iň **logikasyny** (her ýerde işleýär) |
+| Docker | **Realistikaný** (hakyky stack-de ýüze çykýarmy?) |
+
+🧡 «Ýalňyş ýok diýip öwrenip, hakykata işlemeýän ýagdaý» —
+bu iň howply ýagdaý. Şonuň üçin ikisi hem gerek.
+
+## Error contract
+
+| Kod | Many | Üýtgedi mi? |
+|---|---|---|
+| 400 | Validation | ❌ |
+| 401 | Authentication failure | ❌ |
+| 403 | Role | ❌ |
+| 404 | Not found | ❌ |
+| 405 | Method | ❌ |
+| 409 | Conflict (duplicate email) | ❌ |
+| 415 | Media type | ❌ |
+| 500 | Unexpected | ❌ |
+| **503** | **Database unavailable** | ✅ **TÄZE** |
+
+🔴 **409 üýtgemeýär!** `DataIntegrityViolationException`
+`DataAccessException`-yň «çoky» — Spring iň ýakyn handler-i
+saýlaýar, şonuň üçin **409** saklanýar (test #6, #7).
+
+## OpenAPI
+
+503 diňe **2 endpoint**-e goşuldy — olar hakykata DB bilen
+işleşýär:
+
+* `GET /api/users/me` (JWT filter DB soragyny edýär)
+* `POST /api/auth/login`
+
+**Ähli endpoint'lere awtomatik goşulmady** — bu gowudyr:
+dokumentasiýa hakykata ýatmalydyr, ýogsam «her ýerde 503
+bolýar» diýip ýalňyş ýazýarys.

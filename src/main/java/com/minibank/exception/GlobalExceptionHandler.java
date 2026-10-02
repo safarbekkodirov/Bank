@@ -6,7 +6,9 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.TransactionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -22,6 +24,7 @@ import com.minibank.dto.common.ApiError;
 import com.minibank.dto.common.ApiError.FieldViolation;
 import com.minibank.exception.AccountAlreadyExistsException;
 import com.minibank.exception.AccountNotFoundException;
+import com.minibank.exception.DatabaseUnavailableException;
 import com.minibank.exception.InvalidCredentialsException;
 import com.minibank.exception.UnauthorizedException;
 import com.minibank.exception.UserNotFoundException;
@@ -413,6 +416,66 @@ public class GlobalExceptionHandler {
                         HttpStatus.CONFLICT.value(),
                         HttpStatus.CONFLICT.getReasonPhrase(),
                         "Request conflicts with existing data",
+                        request.getRequestURI()));
+    }
+
+    /**
+     * 503 SERVICE UNAVAILABLE — маалымат базасы жеткиликсиз.
+     *
+     * 🧡 ЭМНЕ БУ FILTERДЕ ДӘЛ, ШОҢА БИЗDE БИР ÝER?
+     *     10D-де filter ýoluny «jogap ýazýar» diýip düzettik
+     *     (onda GlobalExceptionHandler ýETMEÝÄR — ýalňyş filter-da
+     *     döredildi). Emma KONTROLLER ýolunda ýalňyş controller-da
+     *     döredilýär — şonda bu handler işleýär:
+     *
+     *         POST /api/auth/login  →  userRepository.findByEmail(...)
+     *                                →  база жок → DataAccessException
+     *
+     *     Şonda hökmany 5xx bolmaly. «Токены ýok» diýip 401
+     *     bermek ÝALŇ bolardy: public endpoint-de token bolmaz
+     *     hiç haçan — ol ýerde 401 diýmek «sen nädogrysyn» diýmek
+     *     bolardy, emma ýalňyş «Sen»de däl-de, «БАЗADA» boldy.
+     *
+     * 🔴 500 ДӘЛ, 503 NÄME ÜÇIN?
+     *     500 = «программа өзи ýalňyş etdi» (код хатосы).
+     *     503 = «программа саз, ýöne bir ýokary ýagdaý döredildi».
+     *     Klient 503 görse, ol «ýokaryda bir ýokary ýagdaý bar,
+     *     soňra gaýtalaýaryn» diýip anlar. 500 bolsa — ol
+     *     «разработчик ýalňyş» diýip ýöne ýitirýär.
+     *
+     * 🧡 «doğry ýyladyş» hökmany ýok:
+     *     Klient «retriý» diýip ýene aýtmaly. Şonuň üçin
+     *     ýalňyşyň sebäbi we ýagdaýy hökman çykýar.
+     *
+     * ⛔ JOGAPTA NÄME ÝOK:
+     *     jdbc: URL, DB ady, ulanyjyň ady, parol, SQL,
+     *     stack trace, «org.hibernate...» atlar — HИЧ БИР.
+     *     (Bular hökman logda — ýokaryda stack trace bilen.)
+     *
+     * 🔴 DataIntegrityViolationException НЭМЕ ÜÇIN ДЫР 409 БОЛУП
+     *     КАЛЫП БЕРИЛЯР?
+     *     Ol mümkin: onuň sanawy bu blokdan ýOKARYŇDADYR.
+     *     Spring iň ýakyn sanawy saýlaýar (DataAccessException-dan
+     *     has ýakyn = DataIntegrityViolationException), şonuň
+     *     üçin 409 «maksat ýaryş» hökmünde ÜÝTMEÝÄР.
+     */
+    @ExceptionHandler({DataAccessException.class, TransactionException.class})
+    public ResponseEntity<ApiError> handleDatabaseUnavailable(
+            RuntimeException ex, HttpServletRequest request) {
+
+        // 🔴 Server tarapynda DÜZGÜNLI maglumat + stack trace.
+        //    «DatabaseUnavailableException» — bu biziň own belgimiz,
+        //    ol Exception-ы «мэдэлэл» görnüşinde saklaýar.
+        log.error("Database unavailable while handling {} {}",
+                request.getMethod(), request.getRequestURI(),
+                new DatabaseUnavailableException(
+                        "Database unavailable during request processing", ex));
+
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiError.of(
+                        HttpStatus.SERVICE_UNAVAILABLE.value(),
+                        HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase(),
+                        "Service temporarily unavailable. Please try again later.",
                         request.getRequestURI()));
     }
 

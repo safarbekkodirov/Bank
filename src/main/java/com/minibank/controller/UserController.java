@@ -71,6 +71,16 @@ public class UserController {
                     content = @Content(schema = @Schema(implementation = ApiError.class))),
             @ApiResponse(responseCode = "404", description = "Токендеги "
                     + "колдонуучу базада жок",
+                    content = @Content(schema = @Schema(implementation = ApiError.class))),
+            // 📈 PHASE 10D: 503 — «токен DOGRY, ýöne база жеткиликсиз».
+            //    🔴 БУ БИР «öňki» 401-ден köp manyly ýalňyş görnüşi:
+            //        401 → «seniň токенiň nädogry»
+            //        503 → «токен DOGRY, emma sistema hyzmat edip bilmedi»
+            //    Şu ýer ýöne HAS anyk: bu endpoint JWT filter
+            //    göçüp alýar — ýagny burada hem bir bazа soragy bar.
+            @ApiResponse(responseCode = "503", description = "Маалымат базасы "
+                    + "жеткиликсиз (инфраструктура ýalňyşy — токен DOGRY, "
+                    + "бирок колдонmo «тамам» edip bilmedi)",
                     content = @Content(schema = @Schema(implementation = ApiError.class)))
     })
     public UserResponse getCurrentUser() {
