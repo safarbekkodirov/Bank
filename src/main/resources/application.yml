@@ -22,6 +22,34 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
+    # 🧡 PHASE 10C: HikariCP — «JAÝYNDAN GYZYLAN» ÝAGDAÝDA KÖP ÇEKMEK.
+    #
+    #   HikariCP-nyň demki wagty: connection-timeout = 30 sekunt.
+    #   «Pool boş, ýöne DB ýok» ýagdaýynda ol 30 sekunt GARAŞÝAR,
+    #   soň «Connection is not available, request timed out
+    #   after 30000ms» diýip gaýtarýar.
+    #
+    # 🔴 Bu MONITORING üçin howpludyr:
+    #   /actuator/health — «kolgon ölýärmi?» diýen sorag.
+    #   Load balancer / orchestrator öz wagtynda (2-5 sekunt)
+    #   jogap alýar diýip garaşýar. 30 sekunt = SORAG ŸITÝÄR →
+    #   balancer «işläp durýar» diýip hasaplaýar, ýöne backend
+    #   ŞOL 30 SEKUNT BOÝUNÇA ÝALŇYŞLYK «durnukly» görünýär.
+    #
+    #   Biz 3 sekunt diýýäris: ýa «tiz DOWN» alynýar, ýa-da
+    #   bal öwrülýär — ýagny ýalňyş jogap galmaýar.
+    #
+    # 🟡 Bu «işjeň logika» däl:
+    #   • deposit/withdraw/transfer — ozgynçyligiňYZ DÄL
+    #   • balans, lock, ýazuw düzgünleri — ozgynçyligiňYZ DÄL
+    #   • ýöne «DB öçen bolanda 30 sekunt garaşmak» däl-de,
+    #     «3 sekunt garaşyp çykmak» — bu INFRASTRUKTURA sazlamasy,
+    #     we ýalňyş ýagdaýynda has çalt faydaly.
+    hikari:
+      connection-timeout: 3000
+      # isValid() arkaly barlananda — şu çägiň içinde.
+      validation-timeout: 2000
+
   # ---------------- Hibernate / JPA ----------------
   jpa:
     # validate = Hibernate таблицаларды ТҮЗБӨЙТ, бар экенин текшерет.
@@ -44,8 +72,33 @@ spring:
     # Биз Flyway чыгарып жаткан колдонмолор
     baseline-on-migrate: true
 
+  # ---------------- PHASE 10C: GRACEFUL SHUTDOWN ----------------
+  #  lifecycle -> «Shutdown кечиктирүү убакты» (graceful shutdown).
+  #  Толук аныктама төмөндө, server.shutdown комментаринде.
+  lifecycle:
+    # 30 секунд: жабылыш учурунда иштеп жаткан суроо бүтсүн.
+    # Кичи болсо — узуп өлтүрүлөт (мык бузулат). Чоң болсо —
+    # өтүнбөгөн убакта «илеги жок» болуп чыгат.
+    timeout-per-shutdown-phase: 30s
+
 server:
   port: 8080
+
+  # 🔴 PHASE 10C: GRACEFUL SHUTDOWN.
+  #
+  # 🧠 «Илеги» кептөөлөм: биз Ctrl+C басканда эмне болот?
+  #    «immediate» ( демкилгиз ): Tomcat ЖОК УЧУНДА бар суроону
+  #        КЕСИП ТАШТАЙТ. Колдонуучу 300 саат алган натыйжаны
+  #        алалбай, экранда 500 көрөт. Маалымат базасында болсо —
+  #        «кассадан акча чыкты, эсепте жок» деген абал.
+  #    «graceful» (биз): иштеп жаткан суроолор бүткөнче КҮТӨБҮЗ,
+  #        ЖАҢЫ суроо кабыл алынбайт. Арында контекст жабылат.
+  #
+  #    Spring Boot 3.x бул үчүн 3 жанын колдоп: сервер, датасорс
+  #    жана (жок болсо) JMS контейнерлери. Бизде эң маанилүүсү —
+  #    Tomcat. Ал Tomcat 9+ «graceful shutdown» бүткөндө active
+  #    коннекцияларды чыгара турганды.
+  shutdown: graceful
 
 # ==========================================================
 #  OpenAPI / Swagger UI (PHASE 10A)
@@ -72,6 +125,118 @@ springdoc:
     operations-sorter: alpha
     tags-sorter: alpha
     doc-expansion: none
+
+# ==========================================================
+#  OBSERVABILITY — ACTUATOR (PHASE 10C)
+# ==========================================================
+#  🧠 БУЛ ЖЕРДЕ ЭМНЕ БОЛУП ЖАТЫР?
+#
+#  Actuator — Spring Boot'тун дабыр «терезе»си. Биз эле эмес,
+#  Spring'дин өзүнүн өлчөө-түзүм (metrics) катмамын күйгүзөбүз:
+#  бизде эч нерсени «өлчөө үчүн» жазпайбыз — биз Spring'дин
+#  дайын санун колдонобуз.
+#
+#  🔴 ЭҢ МААНИЛҮҮ ТАЛАА — `exposure.include`.
+#
+#  Spring Boot'тун ACTUATORдын 40+ жолу бар. Алардын көбү —
+#  ЧЫҢАКЫГЫ НАЗАРГО ТУРАТ:
+#      /actuator/env        — БАРЛЫК .env мааниси (DB пароль, JWT сыр!)
+#      /actuator/configprops— сырттан жазуучу конфигурациянын схемасы
+#      /actuator/heapdump   — 🧠 КОЛДОНМО ЖАШЫН ТУРГАН ПАМЯТЬ
+#      /actuator/threaddump — тизимдин ИЧКИ абалы
+#      /actuator/loggers    — ар ким лог деңгээмини өзгөртө алат
+#
+#  «Эмне үчүн дегенде АЧЫК?» деген суроо — эр кимди
+#  «бардыгын ачам, чоң экран» деп ойлоп калмаслын.
+#  Биз ачкандары — 3ТАНЕ гана жана алар МОНИТОРИНГ ҮЧҮН:
+#      health  — «жашап жатабы?» (load balancer да ушул жолду сурайт)
+#      metrics — сандар (эффектив көрсөткүч)
+#      info    — версия/билдируү (эгер болсо)
+#  Башкасы — ачылбай ЭЛЕ (тапшырма «5-бөлүм»).
+#
+#  🧡 `show-details: never` — эмнеге?
+#     Health «UP» деп жакшы эле айтат. Эгер `always` болсо, жооп
+#     төмөнкүлөрдү АЧЫП берет:
+#         {"db": {"details": {"database": "PostgreSQL",
+#                             "url": "jdbc:postgresql://localhost:5432/minibank"}}}
+#     Бул — чыныгы чабуучулук: биз маалымат базасынын АДРЕСИН
+#     эле жартылап беребиз. Сырттан ким кирип, «сиздин DB
+#     кайда, аты ким, версиясы не» деп окуп алат.
+#     `never` = «UP» же «DOWN» гана. Толук маалымат — логда
+#     (сервер ичинде, чыгаруучуга ЭМЕС).
+management:
+  endpoints:
+    web:
+      exposure:
+        # 🔴 ТОЛУК ТИЗИМ. Бошуң жашыруу «эгер аны кошсом» деп
+        #    калбайбыз. Ачык жол SecurityConfig'те КАЙДАЛЫН ТЫЗИМ.
+        include: health,info,metrics
+
+  endpoint:
+    health:
+      # Ким болгонго карабай чыгаруучуга «бир гана сөз»:
+      # UP / DOWN / OUT_OF_SERVICE.
+      show-details: never
+      # components — детальдардын ичиндеги ички бөлүкчөлөр
+      # («db», «diskSpace»). Ошолор да көрүнбөшү керек.
+      show-components: never
+      # ⛔ «Бүт компонентлери» жашыруу: DB аты, файл жолу —
+      #    alyp, syýat dörediji biletler bolmaly.
+      probes:
+        # Liveness/readiness toparlary bizde ZERO ulanylýar —
+        # kuberenetes ýok. Açmak peýdaly däl, ýöne açyk bolsa
+        # /actuator/health/live we /ready ýeňe köpelýär.
+        enabled: false
+
+  info:
+    env:
+      # ⛔ /actuator/info arkaly .env-niň ähli bahalaryny
+      #    (parol, JWT syry) okap alyp bolmaly. Öçürel.
+      enabled: false
+
+# ==========================================================
+#  LOGGING (PHASE 10C)
+# ==========================================================
+#  🧡 Ни өЧЕН БУЛ БЕРЕК БОЛДУ?
+#     «Debug logging'i global öçürmäni talap etdi» — sebäbi
+#     DEBUG-de çykan maglumatlaryň bir bölegi DÜŞMANA berilýär:
+#         org.hibernate.orm.jdbc.bind -> SQL parametrleri
+#              (? деген ýerine «Secret123!» görnüp durýar)
+#         org.springframework.jdbc.core -> SQL tekst
+#         Spring Security TRACE       -> Authorization HEADERI
+#              (dolaky «Bearer eyJhbGci...»)
+#  Демек: biz DEBUG-i öçürmek bilen näme ulanyp almyz — biz
+#  öçürmEK bilen näme ulanmaýarlys.
+#
+#  🔴 ÇEP TARAP: «meniň logum ýok bolmasa näme bolar?»
+#     Ýok: application INFO-da — start, request, katatalar.
+#     Aýratyn ýygnalan (framework) loglar: köp, repetitive,
+#     we DIŇE gyzykly gollanma wagtynda. Şonuň üçin WARN.
+logging:
+  level:
+    # Kök — Spring Boot-nyň öz start/şow loglary INFO-da
+    # kalýar («Tomcat started on port 8080», «Started BankApplication
+    # in 3.2 seconds»). Şu aýtmały «колдонмо işledi» maglumaty —
+    # olary aýyrmak bolsa HA, artykmaç köй wagt.
+    root: INFO
+    # Bizň OWN kodumyz — INFO. Bir zat «barmak» kere: bizniň
+    # request we katata loglarymyz şu derejede ýazylyp barýar.
+    com.minibank: INFO
+    # ---- Framework: gyzykly bolmadyk ýerler ----
+    # Spring Web-niň DEBUG-i her suroňy 3-4 setir edip ýazýar.
+    org.springframework.web: WARN
+    # «Spring Security» TRACE/AUTH-ды ýazsa — TÄZE talapdaky
+    # Authorization: Bearer <TOKEN> akymyna düşer. Şonuň üçin WARN.
+    org.springframework.security: WARN
+    org.hibernate: WARN
+    # ⛔ SQL «bind» parametrleri — hiç haçan.
+    #   Bu logger Hibernate-da ADY bilen OFF ýagdaýynda gelýär;
+    #   biz ýöne AN-aç-aç görkezüp goýýarys.
+    org.hibernate.orm.jdbc.bind: WARN
+    # Flyway — INFO gerek: «Successfully validated 5 migrations,
+    # now at version v5...» şeýle bir setir «DB şemasy dogrymy?»
+    # sowalyna iň gysga jogap.
+    org.flywaydb: INFO
 
 # ==========================================================
 #  JWT (PHASE 3B)

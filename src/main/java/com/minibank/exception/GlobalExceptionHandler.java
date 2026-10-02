@@ -471,7 +471,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleUnexpected(
             Exception ex, HttpServletRequest request) {
 
-        log.error("Unexpected error at {}", request.getRequestURI(), ex);
+        // 🧡 PHASE 10C: request logi ýazjak bolmadyk ýerler.
+        //    «GET /api/accounts/me -> 200 (18 ms)» — ýeňil setir.
+        //    Bu ýerde — STACK TRACE. Sebäbi: «500 boldy» diýmek
+        //    gowudyr, emma «500 HAÝSY ÝERDE boldy, haýsy setirde
+        //    döndü» diýmek ähli tapawut. Request logynda ýok.
+        //    🔴 Ýazylan zat: METHOD + JOL + stack trace.
+        //       Ýazylmadyk zat: ex.getMessage()-diň IÇINDEKI maglumat
+        //       (jdbc:... URL, SQL, fayl ýoly) — bu hiç haçan
+        //       klient-e BARMAÝAR (aşakdaky body ýaly «An unexpected
+        //       error occurred...» diýip gysgaltmaýar).
+        log.error("Unexpected error: {} {}", request.getMethod(),
+                request.getRequestURI(), ex);
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiError.of(

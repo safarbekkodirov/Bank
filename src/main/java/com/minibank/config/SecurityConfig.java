@@ -109,6 +109,39 @@ public class SecurityConfig {
                         .requestMatchers("/v3/api-docs.yaml").permitAll()
                         .requestMatchers("/swagger-ui.html").permitAll()
                         .requestMatchers("/swagger-ui/**").permitAll()
+                        // 📈 PHASE 10C: ACTUATOR — МОНИТОРИНГ ТЕРЕЗЕСИ.
+                        //    Биз application.yml'де ачык ýoldan diňe
+                        //    ÜÇ SANY actuator endpoint yazdyk:
+                        //        /actuator/health
+                        //        /actuator/info
+                        //        /actuator/metrics
+                        //    Bulardan başga ÄHLI actuator endpointleri
+                        //    ÝAPYK. Sebäbi olaryň köpüsi çygaç:
+                        //        /actuator/env         → .env, DB parol
+                        //        /actuator/configprops → ýazylýan konfigurasiýa
+                        //        /actuator/heapdump    → ýagdaýy içindäki ýat
+                        //        /actuator/threaddump  → ulgamyň içki ýagdaýy
+                        //        /actuator/loggers     → log derejesini üýtgetmek
+                        //    🔴 «OLAR AÇYK ÝOK» diýmek ýeterlik däl — eger
+                        //    bir gün biri ýarym ýazsa, olaryň sanawy
+                        //    GYZYL bolmaly (aşakda).
+                        //    🧡 «/actuator/metrics/**» — näbelli sanlaryň
+                        //    jikme-jik sanlary hem çygaç däl:
+                        //    olarda url, status, jvm ölçegleri bolýar,
+                        //    ýöne parol ýa syr ÝOK.
+                        .requestMatchers("/actuator/health",
+                                         "/actuator/health/**",
+                                         "/actuator/info",
+                                         "/actuator/metrics",
+                                         "/actuator/metrics/**").permitAll()
+                        // 🔴 GYÝYL ÇÄK: actuator-yň GALDAN BOLAN
+                        //    ENDPOINTLERI — HEMMEKI ÜÇIN DENEK.
+                        //    Bu ýerde «hasRole("ADMIN")» ýazmak BOLMAZDI:
+                        //    admin-e açyk bolsa-da, bu endpointler
+                        //    gerekli maşyna — olary açmak onuň
+                        //    häsiýetine bagly bolmaly däl.
+                        //    denyAll() = admin token bilen-de girMEÝÄR.
+                        .requestMatchers("/actuator/**").denyAll()
                         // БАШКА БАРДЫК API — токенсиз КИРБЕЙТ
                         // (Фаза 4+ эсеп/акча чыгаар — ал азыр жок, эртең коргоого алабыз)
                         .anyRequest().authenticated())

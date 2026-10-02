@@ -128,6 +128,22 @@
              Бул китепкана БИЗДИН SecurityConfig'ти ОЗГӨРТМӨЙТ — ал
              так коопсуздук эмес, так ДОКУМЕНТАЦИЯ. Биз SecurityConfig'те
              аларга ачык жол ачып беребиз (swagger чейинги конфигурация). -->
+        <!-- PHASE 10C: OBSERVABILITY (health / metrics).
+             Бул китепкана бизге ҮСТҮНДӮ 3 нерсени берет:
+               1. /actuator/health  — колдонмо + PostgreSQL жашалчылыгы
+               2. /actuator/metrics — Spring Boot'тун өз метрикалары
+                  (http.server.requests, jvm.*, hikaricp.*)
+               3. /actuator/info    — build/versiya маалыматы (бош)
+             🔴 ВЕРСИЯНЫ БИЗ ЖАЗМАЙБЫЗ: «spring-boot-starter-parent»
+             аны башкарады (Spring Boot 3.5.x сызыгы). Демек Spring Boot
+             жаңы версияга которулганда биздин pom да так эле аны менен
+             бирге өсөт — «версияны унутуп, эски күткөнүбүз» деген
+             тоболук чыкмайды. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>

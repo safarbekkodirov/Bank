@@ -19,8 +19,9 @@ Java Backend, Spring Boot, PostgreSQL, REST API, Authentication жана бан�
 | Flyway | (Spring Boot менен биге келед) |
 | JUnit 5 | (Spring Boot Test менен биге келед) |
 | springdoc-openapi (Swagger UI) | 2.8.17 |
+| Spring Boot Actuator | (Spring Boot bilen biige keleýär) |
 
-## Учурдагы абал: **PHASE 10A — API Documentation & OpenAPI**
+## Учурдагы абал: **PHASE 10C — Observability**
 
 Эми иштеп ятат: эсеп ачабыз, акча салýarys, çekýäris, başga esäbe geçirýäris we
 öz operasiýalarymyň **taryhyny sahypa sahypa** görýäris. Ähli amallar
@@ -36,6 +37,10 @@ Transfer (iki esap arasynda), Transaction History (pagination + filter), we
 💾 **PHASE 10B**: PostgreSQL **backup / restore** we recovery
 (deployment gollanmasy — aşakda). Täze biznes-funksiýa we täze
 schema **ýok** — diňe işläp durmagyň ynamlylygy.
+
+📈 **PHASE 10C**: **Actuator** — `/actuator/health`, `/actuator/metrics`.
+Kolgonuň janlylygyny we sanlaryny görmek (aşakda). Täze biznes-funksiýa
+we täze schema **ýok** — diňe göze görnüş we log.
 
 Азыр ýok: Frontend.
 
@@ -897,6 +902,7 @@ src/main/resources/
 | 9 | Integration Hardening & Reliability | ✅ |
 | 10A | API Documentation + OpenAPI (Swagger UI) | ✅ |
 | 10B | Database Backup, Recovery & Operational Reliability | ✅ |
+| 10C | Observability (Actuator, Health, Metrics, Logging) | ✅ |
 | 10 | Frontend | ⬜ |
 
 ---
@@ -1259,3 +1265,277 @@ taşlaýardy — handler ýok ýaly, umumi `Exception` → **500**
 
 Flyway migration: **5** (üýtgemeýär). `ddl-auto=validate`,
 `open-in-view: false` — saklanýar.
+
+---
+
+# PHASE 10C — Observability & Operational Monitoring
+
+Jany biznes-funksiýa **ÝOK**, jany schema **ÝOK** (V6 ýok), jany
+endpoint (mazmuny boýunça) **ÝOK**. Bu faza diňe «işläp durýarmy?»
+we «näme bolup biler?» diýen iki sowaga jogap berýär.
+
+## Näme goşuldy
+
+| Näme | Faýl / Ýer |
+|---|---|
+| `spring-boot-starter-actuator` (**3.5.16**, parent-dan) | `pom.xml` |
+| `management.endpoints.web.exposure.include: health,info,metrics` | `application.yml` |
+| `show-details: never`, `show-components: never` | `application.yml` |
+| `server.shutdown: graceful` + `timeout-per-shutdown-phase: 30s` | `application.yml` |
+| `logging.level.*` (root INFO, framework WARN) | `application.yml` |
+| `/actuator/**` howpsuzlyk kadasy (`permitAll` + `denyAll`) | `config/SecurityConfig.java` |
+| `RequestLoggingFilter` (method, path, status, wagt) | `config/RequestLoggingFilter.java` |
+| 5xx logyna **method** goşuldy | `exception/GlobalExceptionHandler.java` |
+| 19 täze observability test | `integration/ObservabilityTest.java` |
+
+🔴 **Aktuator wersiýasy ýok** — `spring-boot-starter-parent` oňa
+özüýeti berýär. Spring Boot ýokary wersiýa geçse, pom hem şonuň
+bile birге ösýär.
+
+## Health endpoint
+
+```bash
+curl localhost:8080/actuator/health
+```
+
+```json
+{"status":"UP"}
+```
+
+**Diňe şu bir söz.** `show-details: never` sebäpli jogapda DB
+ady, `jdbc:postgresql://...`, ulanyjyň ady ýa-da fayl ýoly
+**çykmaýär** — olar diňe logda (serweriň içinde) görnüp durýar.
+
+> 🟡 PostgreSQL öçen bolsa: `{"status":"DOWN"}` + HTTP **503**.
+> Hiç haçan maglumat sızmaýar, diňe «DOWN».
+
+## Metrics endpoint
+
+```bash
+curl localhost:8080/actuator/metrics
+curl localhost:8080/actuator/metrics/http.server.requests
+curl 'localhost:8080/actuator/metrics/http.server.requests?tag=uri:/api/accounts/me'
+```
+
+**Jemi 93 metrika**, şol sanda:
+
+| Metrika | Näme görkezýär |
+|---|---|
+| `http.server.requests` | Her endpoint boýunça ulgam sanawy, wagt, 4xx/5xx |
+| `hikaricp.connections.*` | DB pooluň janlylygy |
+| `jvm.memory.*`, `jvm.gc.*` | Ýat we «garbage collector» |
+| `process.cpu.usage`, `disk.free` | Prosessor we disk |
+
+🧡 **Metrikanyň ady** — Spring Boot-ň öz ady: `http.server.requests`
+(`/actuator/metrics` sanawyndan barlanyp alynýar).
+
+### HTTP metrikasy barlanyşy (subut)
+
+```text
+GET /api/accounts/me  x5
+/actuator/metrics/http.server.requests?tag=uri:/api/accounts/me
+   COUNT: 6.0 -> 11.0   (DELTA = 5) ✅
+```
+
+### 🧡 Näme üçin täze «biznes metrikalary» goşulmady?
+
+Tapşyrma `minibank.operations.deposit` ýaly sanawlar hörlanyşy
+mümkin diýipdi. Biz **goşmadyk** — sebäbi:
+
+1. Spring Boot-ň `http.server.requests` **haýsy endpointiň**
+   näçe gezek çyryldygyny eýeýär: `uri=/api/accounts/me/deposit`,
+   `.../withdraw`, `.../transfer`, `uri=/api/auth/login`.
+   Şol 4 sany talap **şu metrikanyň içinde bar**.
+2. Täze sanaw goşmak = `MoneyService`, `TransferService`,
+   `AuthService` üçüne-de `Counter.increment()` çagyrmak —
+   ol **işjeň (biznes) koduny` üýtgetmek** bolar.
+3. Tapşyrma: «işjeň logikany sebepsiz ýazma».
+
+Netije: **arassa arhiitektura** — kwartil derejesi ýok, biznes
+kodunda bir setir hem üýtgenmedi.
+
+## 🔐 Actuator howpsuzlygy
+
+**Açyk (3 tanä, monitoring üçin):**
+
+| Endpoint | Nähili ulanylýar |
+|---|---|
+| `/actuator/health` | «Kolgon janmy?» — load balancer şu ýyly sorýar |
+| `/actuator/metrics` | Sanlar — grafik gurmak üçin |
+| `/actuator/info` | Wersiýa — häzirizir `{}` (build-info ýok) |
+
+**🔴 AÇYK DÄL — hemmeki üçin (anonim hem, ADMIN hem):**
+
+| Endpoint | Näme açardy |
+|---|---|
+| `/actuator/env` | **ÄHLI `.env` bahalary** — DB paroly, JWT syry |
+| `/actuator/configprops` | Konfigurasiýanyň shemasy |
+| `/actuator/heapdump` | 🧠 Ýatyşyň **içindäki** ähli zat |
+| `/actuator/threaddump` | Ulgamyň içki ýagdaýy |
+| `/actuator/loggers` | Log derejesini üýtgetmek |
+| `/actuator/beans`, `/mappings` | Gury kod shemasy |
+| `/actuator` (sanaw) | Ähli actuator endpointleriň sanawy |
+
+```java
+.requestMatchers("/actuator/health", ..., "/actuator/metrics/**").permitAll()
+.requestMatchers("/actuator/**").denyAll()
+```
+
+🧡 `denyAll()` — `hasRole("ADMIN")` **ýok**: sebäbi admin-e açyk
+bolsa-da, bu endpointler **maşyna** üçin, olary açmak onuň
+garaşsyzlygyna bagly bolmaly däl.
+
+### 🔐 Näme DÖWÜLETMEÝÄR?
+
+Parol · `passwordHash` · BCrypt (`$2a$`) · JWT tókenniň özi ·
+DB paroly · JDBC URL · `.env` bahalary.
+
+Barlanýan zat — **söz däl, hakyky baha**: test `.env`-däki
+**aniki** paroly we **aniki** JWT syryny alýar we her jogapda
+**ýok** diýip tassyklaýar.
+
+> 🟡 `/v3/api-docs`-da «Authorization: Bearer \<token\>» **sözü**
+> bar — bu **dokumentasiýanyň düşündirişi** (OpenApiConfig),
+> hakyky tókén däl. Şonuň üçin test şuny «ýalňyş» diýip hasapmaýar.
+
+## Request logging
+
+Her `/api/**` soragy üçin **bir setir**:
+
+```text
+GET /api/accounts/me -> 200 (6 ms)
+POST /api/accounts -> 201 (74 ms)
+GET /api/admin/users -> 200 (21 ms)
+```
+
+Faýl: `config/RequestLoggingFilter.java`.
+
+⛔ **HIÇ HAÇAN ýazylmaýar:** `Authorization` header · request body ·
+query string. Sebäbi: birinjilerde JWT tókéni, ikinjide açyk parol
+bolardy. (Barlag: logda `Authorization` — **0**, `Bearer` — **0**.)
+
+🧡 `/swagger-ui/**` we `/actuator/**` loglanmaýar: olar 20+ faýl
+sorag berýär, monitorki sorag bolsa sekunda 10 gezek — olaryň
+«hakyky» gaby bolup durmagyň öňi ýaşar.
+
+## Error logging
+
+| Ýagdaý | Log (server) | Jogap (klient) |
+|---|---|---|
+| 4xx/409 | `warn` — sebäbi bilen | `ApiError` (PHASE 9) |
+| 5xx | `error` + **stack trace** + method + jol | `500` + `ApiError` |
+
+**5xx jogaby** — dälildirilme üçin ýazyk ýazylmaz:
+
+```json
+{"status":500,"error":"Internal Server Error",
+ "message":"An unexpected error occurred. Please try again later.",
+ "path":"/api/..."}
+```
+
+Stack trace · SQL · `jdbc:` · fayl ýoly · Java klassynyň ady —
+**hiç haçan** jogapda çykmaýar (PHASE 9 `ErrorContractTest` #7).
+
+## 🔑 Log derejeleri
+
+| Komponent | Dereje | Näme üçin |
+|---|---|---|
+| `com.minibank` | **INFO** | Request we katalogy — görkezmek gerek |
+| `root` | INFO | «Tomcat started on port 8080» — gerekli |
+| `org.springframework.web` | **WARN** | Her soragyň 3-4 setirini basyp ýatýar |
+| `org.springframework.security` | **WARN** | TRACE-de **Authorization header** çykýar! |
+| `org.hibernate` | WARN | SQL tekstiniň ýykymy |
+| `org.hibernate.orm.jdbc.bind` | WARN | ⛔ SQL **bind parametrleri** (`Secret123!`) |
+| `org.flywaydb` | INFO | «Successfully validated 5 migrations» |
+
+🧡 Biz DEBUG-i öçürmek bilen **näme ulanyp almyz** — öçürmek
+bilen näme ulanmaýarys: DEBUG-de parollar we tókénler çykýar.
+
+## Graceful shutdown
+
+```yaml
+server:
+  shutdown: graceful
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+```
+
+**«Илеги» кептөөлөм.** Ctrl+C basanda «immediate» bolmagy
+mumkin: Tomcat **işleýän** soragyny kesip taşlap, akça girizilgen
+eýede «hesapda ýok» ýagdaýyny döredip bilerdi.
+
+`graceful`: **täze sorag kabul edilmeýär**, işleýän soraglar
+**bitýänçä garaşylýar** (çenli 30 sekunt), soňra arassa ýapylýar.
+
+## 🧡 Tapylan we düzedilen ýalňyş
+
+🔴 **Health 30 sekunt «käm edip» jogap berýärdi.** PostgreSQL
+öçen halatynda `/actuator/health` **HİÇ ÝOGSAÝAN** ýaly 30 sekunt
+ garaşyp, soň ýene-diňe `DOWN` diýip jogap berýärdi. Sebäbi:
+HikariCP pooly «30 sekunt garaş» diýip sazlanan. Monitoring üçin bu
+ýeterlik däl — load balancer öz wagtynda «öli» diýip hasaplar.
+
+**Düzeltme:** HikariCP **connection-timeout** 3 sekunt edildi
+(health çalgyna «jakyn» jogap berýär), munuň üstüne
+`validation-timeout` goşuldy. Iň ýaşy ýagdaýda `/actuator/health`
+**3 sekuntda** `DOWN` diýip jogap berýär.
+
+🔴 **PHASE 10B-niň restore testleri** aktuator goşulandan soň hem
+`PHASE10B_DOCKER_TESTS=true` bilen doly işledi — 5/5 passed.
+
+## Database sagatlygy
+
+```bash
+docker compose stop postgres     # ⛔ -v DÄL!
+curl localhost:8080/actuator/health
+#  {"status":"DOWN"}   HTTP 503
+
+docker compose start postgres
+curl localhost:8080/actuator/health
+#  {"status":"UP"}     HTTP 200
+```
+
+**Subut:** `up -> down -> up` — we maglumat ýitmedi
+(`users` tablisasy doly saklandy).
+
+> ⛔ `docker compose down -v` **HIÇ HAÇAN** bu testde ulanylmaýar —
+> ol **tom ýok edýär**.
+
+## Testler
+
+**347 jemi** (342 bar + 5 täze). 5 sany PHASE 10B testi
+`PHASE10B_DOCKER_TESTS=true` berilende işleýär, ýoksa howpsuzça
+skip bolýar.
+
+| Faýl | Sany |
+|---|---|
+| `ObservabilityTest` | **19** |
+
+`ObservabilityTest` şulary barlaýar: health 200/UP · details sızmaýar
+· metrics 200 · `http.server.requests` bardyr we **ýuwulýar** ·
+sensitive endpointler anonim hem, ADMIN hem girip bilmeýär · eski
+4 endpointiň 401/403/200矩阵y · OpenAPI üýtgemedi · hakyky parol we
+JWT syry hiç ýerde sızmaýar.
+
+## Subutlar
+
+```text
+/actuator/health   -> 200 {"status":"UP"}     ✅
+/actuator/metrics  -> 200 (93 metrika)       ✅
+/actuator/info     -> 200 {}                 ✅
+/v3/api-docs       -> 200                    ✅
+/swagger-ui/index.html -> 200                ✅
+/actuator/env      -> 401 (anonim) / 403 (ADMIN)  ✅
+```
+
+**Howpsuzlyk matritsasy (çyn JAR, hakyky tókén bilen):**
+
+| Endpoint | tokensiz | nädogry | USER | ADMIN |
+|---|---|---|---|---|
+| `/api/users/me` | 401 | 401 | 200 | 200 |
+| `/api/accounts/me` | 401 | 401 | 200 | 404\* |
+| `/api/accounts/me/transactions` | 401 | 401 | 200 | 404\* |
+| `/api/admin/users` | 401 | 401 | **403** | **200** |
+
+\* Admin-iň öz eşegi ýok — bu biznes düzgüni, korag däl.
